@@ -266,8 +266,8 @@ float4 raycast(const Volume v, const uint2 pos, const Matrix4 view,
 
 /************** KERNELS ***************/
 
-__kernel void renderNormalKernel( const __global uchar * in,
-		__global float * out ) {
+__kernel void renderNormalKernel( const __global uchar * restrict in,
+		__global float * restrict out ) {
 
 	const int posx = get_global_id(0);
 	const int posy = get_global_id(1);
@@ -290,8 +290,8 @@ __kernel void renderNormalKernel( const __global uchar * in,
 
 }
 
-__kernel void renderDepthKernel( __global uchar4 * out,
-		__global float * depth,
+__kernel void renderDepthKernel( __global uchar4 * restrict out,
+		__global float * restrict depth,
 		const float nearPlane,
 		const float farPlane ) {
 
@@ -324,8 +324,8 @@ __kernel void renderDepthKernel( __global uchar4 * out,
 	}
 }
 
-__kernel void renderTrackKernel( __global uchar3 * out,
-		__global const TrackData * data ) {
+__kernel void renderTrackKernel( __global uchar3 * restrict out,
+		__global const TrackData * restrict data ) {
 
 	const int posx = get_global_id(0);
 	const int posy = get_global_id(1);
@@ -343,9 +343,9 @@ __kernel void renderTrackKernel( __global uchar3 * out,
 	}
 }
 
-__kernel void bilateralFilterKernel( __global float * out,
-		const __global float * in,
-		const __global float * gaussian,
+__kernel void bilateralFilterKernel( __global float * restrict out,
+		const __global float * restrict in,
+		const __global float * restrict gaussian,
 		const float e_d,
 		const int r ) {
 
@@ -380,17 +380,26 @@ __kernel void bilateralFilterKernel( __global float * out,
 
 }
 
-__kernel void renderVolumeKernel( __global uchar * render,
-		__global short2 * v_data,
+__kernel void renderVolumeKernel( __global uchar * restrict render,
+		__global short2 * restrict v_data,
 		const uint3 v_size,
 		const float3 v_dim,
-		const Matrix4 view,
+		const float4 view0,
+		const float4 view1,
+		const float4 view2,
+		const float4 view3,
 		const float nearPlane,
 		const float farPlane,
 		const float step,
 		const float largestep,
 		const float3 light,
 		const float3 ambient) {
+
+	Matrix4 view;
+	view.data[0] = view0;
+	view.data[1] = view1;
+	view.data[2] = view2;
+	view.data[3] = view3;
 
 	const Volume v = {v_size, v_dim,v_data};
 
@@ -418,16 +427,25 @@ __kernel void renderVolumeKernel( __global uchar * render,
 
 /************** KFUSION KERNELS ***************/
 
-__kernel void raycastKernel( __global float * pos3D,  //float3
-		__global float * normal,//float3
-		__global short2 * v_data,
+__kernel void raycastKernel( __global float * restrict pos3D,  //float3
+		__global float * restrict normal,//float3
+		__global short2 * restrict v_data,
 		const uint3 v_size,
 		const float3 v_dim,
-		const Matrix4 view,
+		const float4 view0,
+		const float4 view1,
+		const float4 view2,
+		const float4 view3,
 		const float nearPlane,
 		const float farPlane,
 		const float step,
 		const float largestep ) {
+
+	Matrix4 view;
+	view.data[0] = view0;
+	view.data[1] = view1;
+	view.data[2] = view2;
+	view.data[3] = view3;
 
 	const Volume volume = {v_size, v_dim, v_data};
 
@@ -454,18 +472,36 @@ __kernel void raycastKernel( __global float * pos3D,  //float3
 }
 
 __kernel void integrateKernel (
-		__global short2 * v_data,
+		__global short2 * restrict v_data,
 		const uint3 v_size,
 		const float3 v_dim,
-		__global const float * depth,
+		__global const float * restrict depth,
 		const uint2 depthSize,
-		const Matrix4 invTrack,
-		const Matrix4 K,
+		const float4 invTrack0,
+		const float4 invTrack1,
+		const float4 invTrack2,
+		const float4 invTrack3,
+		const float4 K0,
+		const float4 K1,
+		const float4 K2,
+		const float4 K3,
 		const float mu,
 		const float maxweight,
 		const float3 delta,
 		const float3 cameraDelta
 ) {
+
+	Matrix4 invTrack;
+	invTrack.data[0] = invTrack0;
+	invTrack.data[1] = invTrack1;
+	invTrack.data[2] = invTrack2;
+	invTrack.data[3] = invTrack3;
+
+	Matrix4 K;
+	K.data[0] = K0;
+	K.data[1] = K1;
+	K.data[2] = K2;
+	K.data[3] = K3;
 
 	Volume vol; vol.data = v_data; vol.size = v_size; vol.dim = v_dim;
 
@@ -512,21 +548,39 @@ __kernel void integrateKernel (
 
 // inVertex iterate
 __kernel void trackKernel (
-		__global TrackData * output,
+		__global TrackData * restrict output,
 		const uint2 outputSize,
-		__global const float * inVertex,// float3
+		__global const float * restrict inVertex,// float3
 		const uint2 inVertexSize,
-		__global const float * inNormal,// float3
+		__global const float * restrict inNormal,// float3
 		const uint2 inNormalSize,
-		__global const float * refVertex,// float3
+		__global const float * restrict refVertex,// float3
 		const uint2 refVertexSize,
-		__global const float * refNormal,// float3
+		__global const float * restrict refNormal,// float3
 		const uint2 refNormalSize,
-		const Matrix4 Ttrack,
-		const Matrix4 view,
+		const float4 Ttrack0,
+		const float4 Ttrack1,
+		const float4 Ttrack2,
+		const float4 Ttrack3,
+		const float4 view0,
+		const float4 view1,
+		const float4 view2,
+		const float4 view3,
 		const float dist_threshold,
 		const float normal_threshold
 ) {
+
+	Matrix4 Ttrack;
+	Ttrack.data[0] = Ttrack0;
+	Ttrack.data[1] = Ttrack1;
+	Ttrack.data[2] = Ttrack2;
+	Ttrack.data[3] = Ttrack3;
+
+	Matrix4 view;
+	view.data[0] = view0;
+	view.data[1] = view1;
+	view.data[2] = view2;
+	view.data[3] = view3;
 
 	const uint2 pixel = (uint2)(get_global_id(0),get_global_id(1));
 
@@ -578,8 +632,8 @@ __kernel void trackKernel (
 }
 
 __kernel void reduceKernel (
-		__global float * out,
-		__global const TrackData * J,
+		__global float * restrict out,
+		__global const TrackData * restrict J,
 		const uint2 JSize,
 		const uint2 size,
 		__local float * S
@@ -659,11 +713,20 @@ __kernel void reduceKernel (
 	}
 }
 
-__kernel void depth2vertexKernel( __global float * vertex, // float3
+__kernel void depth2vertexKernel( __global float * restrict vertex, // float3
 		const uint2 vertexSize ,
-		const __global float * depth,
+		const __global float * restrict depth,
 		const uint2 depthSize ,
-		const Matrix4 invK ) {
+		const float4 invK0,
+		const float4 invK1,
+		const float4 invK2,
+		const float4 invK3) {
+
+	Matrix4 invK;
+	invK.data[0] = invK0;
+	invK.data[1] = invK1;
+	invK.data[2] = invK2;
+	invK.data[3] = invK3;
 
 	uint2 pixel = (uint2) (get_global_id(0),get_global_id(1));
 	float3 vert = (float3)(get_global_id(0),get_global_id(1),1.0f);
@@ -682,9 +745,9 @@ __kernel void depth2vertexKernel( __global float * vertex, // float3
 
 }
 
-__kernel void vertex2normalKernel( __global float * normal,    // float3
+__kernel void vertex2normalKernel( __global float * restrict normal,    // float3
 		const uint2 normalSize,
-		const __global float * vertex ,
+		const __global float * restrict vertex ,
 		const uint2 vertexSize ) {  // float3
 
 	uint2 pixel = (uint2) (get_global_id(0),get_global_id(1));
@@ -731,9 +794,9 @@ __kernel void vertex2normalKernel( __global float * normal,    // float3
 }
 
 __kernel void mm2metersKernel(
-		__global float * depth,
+		__global float * restrict depth,
 		const uint2 depthSize ,
-		const __global ushort * in ,
+		const __global ushort * restrict in ,
 		const uint2 inSize ,
 		const int ratio ) {
 	uint2 pixel = (uint2) (get_global_id(0),get_global_id(1));
@@ -752,8 +815,8 @@ __kernel void initVolumeKernel(__global short2 * data) {
 
 }
 
-__kernel void halfSampleRobustImageKernel(__global float * out,
-		__global const float * in,
+__kernel void halfSampleRobustImageKernel(__global float * restrict out,
+		__global const float * restrict in,
 		const uint2 inSize,
 		const float e_d,
 		const int r) {
@@ -780,4 +843,3 @@ __kernel void halfSampleRobustImageKernel(__global float * out,
 	out[pixel.x + pixel.y * outSize.x] = t / sum;
 
 }
-
