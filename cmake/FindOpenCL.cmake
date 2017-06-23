@@ -52,35 +52,110 @@ ELSE (CMAKE_SIZEOF_VOID_P EQUAL 8)
   SET (_OPENCL_POSSIBLE_LIB_SUFFIXES lib/Win32 lib/x86 lib)
 ENDIF (CMAKE_SIZEOF_VOID_P EQUAL 8)
 
-LIST (APPEND _OPENCL_POSSIBLE_LIB_SUFFIXES lib/nvidia-current)
+LIST (APPEND _OPENCL_POSSIBLE_LIB_SUFFIXES lib/nvidia-current linux64/lib)
 
 FIND_PATH (OPENCL_ROOT_DIR
-  NAMES OpenCL/cl.h
-        CL/cl.h
-        include/CL/cl.h
-        include/nvidia-current/CL/cl.h
-  HINTS ${CUDA_TOOLKIT_ROOT_DIR}
-  PATHS ENV OCLROOT
-        ENV AMDAPPSDKROOT
-        ENV CUDA_PATH
-        ENV INTELOCLSDKROOT
-  PATH_SUFFIXES cuda
-  DOC "OpenCL root directory")
+NAMES OpenCL/cl.h
+      CL/cl.h
+      include/CL/cl.h
+      include/nvidia-current/CL/cl.h
+HINTS ${CUDA_TOOLKIT_ROOT_DIR}
+PATHS ENV OCLROOT
+      ENV AMDAPPSDKROOT
+      ENV CUDA_PATH
+      ENV INTELOCLSDKROOT
+      ENV ALTERAOCLSDKROOT
+PATH_SUFFIXES host/include
+DOC "OpenCL root directory")
+
+MESSAGE ("-- OpenCL root directory found in ${OPENCL_ROOT_DIR}")
 
 FIND_PATH (OPENCL_INCLUDE_DIR
-  NAMES OpenCL/cl.h CL/cl.h
-  HINTS ${OPENCL_ROOT_DIR}
-  PATH_SUFFIXES include include/nvidia-current
-  DOC "OpenCL include directory")
+NAMES OpenCL/cl.h CL/cl.h
+HINTS ${OPENCL_ROOT_DIR}
+PATH_SUFFIXES include include/nvidia-current
+DOC "OpenCL include directory")
+
+MESSAGE ("-- OpenCL include directory found in ${OPENCL_INCLUDE_DIR}")
 
 FIND_LIBRARY (OPENCL_LIBRARY
-  NAMES OpenCL 
-  HINTS ${OPENCL_ROOT_DIR}  /usr/local/lib/mali/fbdev/ 
-  PATH_SUFFIXES ${_OPENCL_POSSIBLE_LIB_SUFFIXES}
-  DOC "OpenCL library")
+NAMES OpenCL
+HINTS ${OPENCL_ROOT_DIR}  /usr/local/lib/mali/fbdev/
+PATHS ENV ALTERAOCLSDKROOT
+PATH_SUFFIXES ${_OPENCL_POSSIBLE_LIB_SUFFIXES}
+DOC "OpenCL library")
+
+MESSAGE ("-- OpenCL library found in ${OPENCL_LIBRARY}")
 
 SET (OPENCL_INCLUDE_DIRS ${OPENCL_INCLUDE_DIR})
 SET (OPENCL_LIBRARIES ${OPENCL_LIBRARY})
+
+# for Altera environments more steps need to be taken: include additional dirs and link additional libraries
+IF(DEFINED ENV{ALTERAOCLSDKROOT})
+  # find OpenCL compiler
+  # aoc kernel.cl -o kernel.aocx --board de5net_a7
+  FIND_PROGRAM(AOC_BIN aoc)
+  IF(NOT AOC_BIN)
+    MESSAGE (FATAL_ERROR "Altera OpenCL compiler not found")
+  ENDIF(NOT AOC_BIN)
+
+  # include OpenCL headers
+  EXECUTE_PROCESS(COMMAND aocl compile-config OUTPUT_VARIABLE AOCL_INCLUDE_DIRS)
+  STRING(REPLACE "-I" "" AOCL_INCLUDE_DIRS ${AOCL_INCLUDE_DIRS})
+  STRING(REPLACE " " ";" AOCL_INCLUDE_DIRS ${AOCL_INCLUDE_DIRS})
+  FOREACH(INC_DIR ${AOCL_INCLUDE_DIRS})
+    # check if directory was already included
+    LIST (FIND OPENCL_INCLUDE_DIRS ${INC_DIR} _IDX)
+    IF (${_IDX} GREATER -1)
+      SET (OPENCL_INCLUDE_DIRS "${OPENCL_INCLUDE_DIRS} ${INC_DIR}")
+    ENDIF(${_IDX} GREATER -1)
+  ENDFOREACH(INC_DIR)
+  
+  # required OpenCL libraries
+  # get directories where libraries are located
+  EXECUTE_PROCESS(COMMAND aocl ldflags OUTPUT_VARIABLE AOCL_LINK_LIBRARIES_DIRS)
+  STRING(REPLACE "-L" "" AOCL_LINK_LIBRARIES_DIRS ${AOCL_LINK_LIBRARIES_DIRS})
+  STRING(REPLACE "\n" "" AOCL_LINK_LIBRARIES_DIRS ${AOCL_LINK_LIBRARIES_DIRS})
+  STRING(REPLACE " " ";" AOCL_LINK_LIBRARIES_DIRS ${AOCL_LINK_LIBRARIES_DIRS})
+
+  # get libraries to find
+  EXECUTE_PROCESS(COMMAND aocl ldlibs OUTPUT_VARIABLE AOCL_LINK_LIBRARIES)
+  STRING(REPLACE " " ";" AOCL_LINK_LIBRARIES ${AOCL_LINK_LIBRARIES})
+  FOREACH(BKP_FLAG ${AOCL_LINK_LIBRARIES})
+    STRING(REPLACE "-l" "" LINK_FLAG ${BKP_FLAG})
+    # link library flag
+    IF (NOT ${LINK_FLAG} STREQUAL ${BKP_FLAG})
+      # trim flag
+      STRING(REPLACE "\n" "" LINK_FLAG ${LINK_FLAG})
+      # find library
+      FIND_LIBRARY (OPENCL_LIBRARY_${LINK_FLAG}
+      NAMES ${LINK_FLAG}
+      PATHS ${AOCL_LINK_LIBRARIES_DIRS}
+      DOC "OpenCL library")
+
+      # if library was not found then raise fatal error
+      IF (${OPENCL_LIBRARY_${LINK_FLAG}} STREQUAL "OPENCL_LIBRARY_${LINK_FLAG}-NOTFOUND")
+        MESSAGE (FATAL_ERROR "-- Library ${LINK_FLAG} not found")
+      ENDIF (${OPENCL_LIBRARY_${LINK_FLAG}} STREQUAL "OPENCL_LIBRARY_${LINK_FLAG}-NOTFOUND")
+
+      # append to list of libraries
+      SET (OPENCL_LIBRARIES "${OPENCL_LIBRARIES} ${OPENCL_LIBRARY_${LINK_FLAG}}")
+    # other flags
+    ELSE (NOT ${LINK_FLAG} STREQUAL ${BKP_FLAG})
+      # append to list of linker flags
+      SET (CMAKE_EXE_LINKER_FLAGS  "${CMAKE_EXE_LINKER_FLAGS} ${BKP_FLAG}" )
+    ENDIF (NOT ${LINK_FLAG} STREQUAL ${BKP_FLAG})
+  ENDFOREACH(BKP_FLAG)
+
+  MESSAGE ("-- Found Altera OpenCL $ENV{ALTERAOCLSDKROOT}")
+ENDIF(DEFINED ENV{ALTERAOCLSDKROOT})
+
+SET(OPENCL_INCLUDE_DIRS /opt/intelFPGA/16.1/hld/host/include)
+
+MESSAGE ("-- Included directories: ${OPENCL_INCLUDE_DIRS}")
+MESSAGE ("-- Linked libraries: ${OPENCL_LIBRARIES}")
+
+MESSAGE ("-- Compiler version: ${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION}")
 
 IF (OPENCL_INCLUDE_DIR AND OPENCL_LIBRARY)
   SET (_OPENCL_VERSION_TEST_SOURCE
@@ -123,18 +198,26 @@ int main()
 
     return result == CL_SUCCESS ? EXIT_SUCCESS : EXIT_FAILURE;
 }
-")
+  ")
 
   SET (_OPENCL_VERSION_SOURCE
     "${CMAKE_BINARY_DIR}${CMAKE_FILES_DIRECTORY}/CMakeTmp/openclversion.c")
 
   FILE (WRITE ${_OPENCL_VERSION_SOURCE} "${_OPENCL_VERSION_TEST_SOURCE}\n")
 
+  STRING(REPLACE " " ";" OPENCL_LIBRARIES ${OPENCL_LIBRARIES})
+
+  MESSAGE("------- libs: ${OPENCL_LIBRARIES}")
+  MESSAGE("------- TRY_RUN ${CMAKE_BINARY_DIR} ${_OPENCL_VERSION_SOURCE}")
+
   TRY_RUN (_OPENCL_VERSION_RUN_RESULT _OPENCL_VERSION_COMPILE_RESULT
     ${CMAKE_BINARY_DIR} ${_OPENCL_VERSION_SOURCE}
     RUN_OUTPUT_VARIABLE _OPENCL_VERSION_STRING
     CMAKE_FLAGS "-DINCLUDE_DIRECTORIES:STRING=${OPENCL_INCLUDE_DIRS}"
-                "-DLINK_LIBRARIES:STRING=${OPENCL_LIBRARIES}")
+                "-DLINK_LIBRARIES:STRING=${OPENCL_LIBRARIES}"
+    COMPILE_OUTPUT_VARIABLE _OPENCL_VERSION_COMPILE_OUTPUT)
+
+  MESSAGE("Tried compiling and running openclversion.c, result is: ${_OPENCL_VERSION_RUN_RESULT}, succesfully compiled: ${_OPENCL_VERSION_COMPILE_RESULT}, compile output:\n\n${_OPENCL_VERSION_COMPILE_OUTPUT}, \n\nend of compile output")
 
   IF (_OPENCL_VERSION_RUN_RESULT EQUAL 0)
     STRING (REGEX REPLACE "OpenCL[ \t]+([0-9]+)\\.[0-9]+.*" "\\1"

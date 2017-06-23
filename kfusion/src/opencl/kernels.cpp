@@ -616,7 +616,9 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 
 	// half sample the input depth maps into the pyramid levels
 	for (unsigned int i = 1; i < iterations.size(); ++i) {
-		//halfSampleRobustImage(ScaledDepth[i], ScaledDepth[i-1], make_uint2( inputSize.x  / (int)pow(2,i) , inputSize.y / (int)pow(2,i) )  , e_delta * 3, 1);
+		// outSize = computationSize / 2
+		// outSize = computationSize / 4
+		// outSize = computationSize / 8
 		uint2 outSize = make_uint2(computationSize.x / (int) pow(2, i),
 				computationSize.y / (int) pow(2, i));
 
@@ -886,11 +888,9 @@ bool Kfusion::integration(float4 k, uint integration_rate, float mu,
 		const Matrix4 K = getCameraMatrix(k);
 
 		//uint3 pix = make_uint3(thr2pos2());
-		const float3 delta = rotate(invTrack,
-				make_float3(0, 0, volumeDimensions.z / volumeResolution.z));
+		const float3 delta = rotate(invTrack, make_float3(0, 0, volumeDimensions.z / volumeResolution.z));
 		const float3 cameraDelta = rotate(K, delta);
 
-		// set param and run kernel
 		int arg = 0;
 		clError = clSetKernelArg(integrate_ocl_kernel, arg++, sizeof(cl_mem),
 				(void*) &ocl_volume_data);

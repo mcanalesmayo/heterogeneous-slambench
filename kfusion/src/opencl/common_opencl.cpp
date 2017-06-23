@@ -158,7 +158,7 @@ void opencl_init(void) {
 
 			delete[] log;
 		}
-		printf("Error: Failed to build program executable!\n");
+		printf("Error: Failed to build program executable! %d\n", clError);
 		exit(1);
 	}
 

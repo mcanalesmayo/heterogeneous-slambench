@@ -13,6 +13,10 @@
 
 #define INVALID -2 
 
+#define MULTIPLIER 			32766.0f
+// multiply 1/32766.0f instead of dividing by 32766.0f
+#define INVERSE_MULTIPLIER	0.00003051944088f
+
 typedef struct sVolume {
 	uint3 size;
 	float3 dim;
@@ -46,8 +50,7 @@ inline float3 Mat4TimeFloat3(Matrix4 M, float3 v) {
 }
 
 inline void setVolume(Volume v, uint3 pos, float2 d) {
-	v.data[pos.x + pos.y * v.size.x + pos.z * v.size.x * v.size.y] = (short2)(
-			d.x * 32766.0f, d.y);
+	v.data[pos.x + pos.y * v.size.x + pos.z * v.size.x * v.size.y] = (short2)(d.x * MULTIPLIER, d.y);
 }
 
 inline float3 posVolume(const Volume v, const uint3 p) {
@@ -59,7 +62,7 @@ inline float3 posVolume(const Volume v, const uint3 p) {
 inline float2 getVolume(const Volume v, const uint3 pos) {
 	const short2 d = v.data[pos.x + pos.y * v.size.x
 			+ pos.z * v.size.x * v.size.y];
-	return (float2)(d.x * 0.00003051944088f, d.y); //  / 32766.0f
+	return (float2)(d.x * INVERSE_MULTIPLIER, d.y);
 }
 
 inline float vs(const uint3 pos, const Volume v) {
@@ -88,7 +91,7 @@ inline float interp(const float3 pos, const Volume v) {
 							* (1 - factor.x)
 							+ vs((uint3)(upper.x, upper.y, upper.z), v)
 									* factor.x) * factor.y) * factor.z)
-			* 0.00003051944088f;
+			* INVERSE_MULTIPLIER;
 }
 
 inline float3 grad(float3 pos, const Volume v) {
@@ -190,7 +193,7 @@ inline float3 grad(float3 pos, const Volume v) {
 
 	return gradient
 			* (float3)(v.dim.x / v.size.x, v.dim.y / v.size.y,
-					v.dim.z / v.size.z) * (0.5f * 0.00003051944088f);
+					v.dim.z / v.size.z) * (0.5f * INVERSE_MULTIPLIER);
 }
 
 inline float3 get_translation(const Matrix4 view) {
@@ -421,27 +424,27 @@ __kernel void raycastKernel( __global float * pos3D,  //float3
 		const float step,
 		const float largestep ) {
 
-	const Volume volume = {v_size, v_dim,v_data};
+	const Volume volume = {v_size, v_dim, v_data};
 
-	const uint2 pos = (uint2) (get_global_id(0),get_global_id(1));
+	const uint2 pos = (uint2) (get_global_id(0), get_global_id(1));
 	const int sizex = get_global_size(0);
 
-	const float4 hit = raycast( volume, pos, view, nearPlane, farPlane, step, largestep );
+	const float4 hit = raycast(volume, pos, view, nearPlane, farPlane, step, largestep );
 	const float3 test = as_float3(hit);
 
-	if(hit.w > 0.0f ) {
-		vstore3(test,pos.x + sizex * pos.y,pos3D);
-		float3 surfNorm = grad(test,volume);
+	if(hit.w > 0.0f) {
+		vstore3(test, pos.x + sizex * pos.y, pos3D);
+		float3 surfNorm = grad(test, volume);
 		if(length(surfNorm) == 0) {
 			//float3 n =  (INVALID,0,0);//vload3(pos.x + sizex * pos.y,normal);
 			//n.x=INVALID;
-			vstore3((float3)(INVALID,INVALID,INVALID),pos.x + sizex * pos.y,normal);
+			vstore3((float3)(INVALID, INVALID, INVALID), pos.x + sizex * pos.y, normal);
 		} else {
-			vstore3(normalize(surfNorm),pos.x + sizex * pos.y,normal);
+			vstore3(normalize(surfNorm), pos.x + sizex * pos.y, normal);
 		}
 	} else {
-		vstore3((float3)(0),pos.x + sizex * pos.y,pos3D);
-		vstore3((float3)(INVALID, INVALID, INVALID),pos.x + sizex * pos.y,normal);
+		vstore3((float3)(0), pos.x + sizex * pos.y, pos3D);
+		vstore3((float3)(INVALID, INVALID, INVALID), pos.x + sizex * pos.y, normal);
 	}
 }
 
@@ -454,39 +457,49 @@ __kernel void integrateKernel (
 		const Matrix4 invTrack,
 		const Matrix4 K,
 		const float mu,
-		const float maxweight ,
-		const float3 delta ,
+		const float maxweight,
+		const float3 delta,
 		const float3 cameraDelta
 ) {
 
 	Volume vol; vol.data = v_data; vol.size = v_size; vol.dim = v_dim;
 
-	uint3 pix = (uint3) (get_global_id(0),get_global_id(1),0);
+	uint3 pix = (uint3) (get_global_id(0), get_global_id(1), 0);
 	const int sizex = get_global_size(0);
 
-	float3 pos = Mat4TimeFloat3 (invTrack , posVolume(vol,pix));
-	float3 cameraX = Mat4TimeFloat3 ( K , pos);
+	float3 pos = Mat4TimeFloat3(invTrack, posVolume(vol, pix));
+	float3 cameraX = Mat4TimeFloat3(K, pos);
 
+	// vol.size.z = depth of the volume resolution
 	for(pix.z = 0; pix.z < vol.size.z; ++pix.z, pos += delta, cameraX += cameraDelta) {
-		if(pos.z < 0.0001f) // some near plane constraint
-		continue;
+		// some near plane constraint
+		if(pos.z < 0.0001f) continue;
+        // get pixel X & Y coordinates in 2D camera plane
 		const float2 pixel = (float2) (cameraX.x/cameraX.z + 0.5f, cameraX.y/cameraX.z + 0.5f);
 
-		if(pixel.x < 0 || pixel.x > depthSize.x-1 || pixel.y < 0 || pixel.y > depthSize.y-1)
-		continue;
+        // depthSize = computationSize
+		if(pixel.x < 0 || pixel.x > depthSize.x-1 || pixel.y < 0 || pixel.y > depthSize.y-1) continue;
+        // pixel as integer coordinates in 2D camera plane
 		const uint2 px = (uint2)(pixel.x, pixel.y);
 		float depthpx = depth[px.x + depthSize.x * px.y];
 
 		if(depthpx == 0) continue;
-		const float diff = ((depthpx) - cameraX.z) * sqrt(1+sq(pos.x/pos.z) + sq(pos.y/pos.z));
 
+		// diff = eta
+		const float diff = ((depthpx) - cameraX.z) * sqrt(1 + sq(pos.x/pos.z) + sq(pos.y/pos.z));
+		// if diff > -mu
+		// 		min(1, eta/mu) * sgn(eta)
+		// sgn(X) = {-1, 0, 1} (sign of X)
 		if(diff > -mu) {
+			// Signed Distance Function
 			const float sdf = fmin(1.f, diff/mu);
-			float2 data = getVolume(vol,pix);
-			data.x = clamp((data.y*data.x + sdf)/(data.y + 1), -1.f, 1.f);
+			float2 data = getVolume(vol, pix);
+			data.x = clamp((data.y * data.x + sdf)/(data.y + 1), -1.f, 1.f);
 			data.y = fmin(data.y+1, maxweight);
-			setVolume(vol,pix, data);
+			setVolume(vol, pix, data);
+			// Signed Distance Function has been truncated
 		}
+		// null otherwise
 	}
 
 }
@@ -726,10 +739,10 @@ __kernel void initVolumeKernel(__global short2 * data) {
 	uint x = get_global_id(0);
 	uint y = get_global_id(1);
 	uint z = get_global_id(2);
-	uint3 size = (uint3) (get_global_size(0),get_global_size(1),get_global_size(2));
-	float2 d = (float2) (1.0f,0.0f);
+	uint3 size = (uint3) (get_global_size(0), get_global_size(1), get_global_size(2));
+	float2 d = (float2) (1.0f, 0.0f);
 
-	data[x + y * size.x + z * size.x * size.y] = (short2) (d.x * 32766.0f, d.y);
+	data[x + y * size.x + z * size.x * size.y] = (short2) (d.x * MULTIPLIER, d.y);
 
 }
 
@@ -751,6 +764,7 @@ __kernel void halfSampleRobustImageKernel(__global float * out,
 		for(int j = -r + 1; j <= r; ++j) {
 			int2 from = (int2)(clamp((int2)(centerPixel.x + j, centerPixel.y + i), (int2)(0), (int2)(inSize.x - 1, inSize.y - 1)));
 			float current = in[from.x + from.y * inSize.x];
+			// Depth values are used in the average only if they are within 3*sigma_r of the central pixel to ensure smoothing does not occur over boundaries
 			if(fabs(current - center) < e_d) {
 				sum += 1.0f;
 				t += current;
