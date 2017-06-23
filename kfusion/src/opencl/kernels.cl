@@ -18,8 +18,12 @@
 #define INVERSE_MULTIPLIER	0.00003051944088f
 
 typedef struct sVolume {
+	// computation size (volume resolution)
 	uint3 size;
+	// for volume (size) scaling?
 	float3 dim;
+	// data[0]: whether the point is behind or ahead
+	// data[1]: point certainty/confidence (there's a top threshold: maxweight)
 	__global short2 * data;
 } Volume;
 
@@ -29,6 +33,7 @@ typedef struct sTrackData {
 	float J[6];
 } TrackData;
 
+// 4x4 matrix
 typedef struct sMatrix4 {
 	float4 data[4];
 } Matrix4;
@@ -495,6 +500,7 @@ __kernel void integrateKernel (
 			const float sdf = fmin(1.f, diff/mu);
 			float2 data = getVolume(vol, pix);
 			data.x = clamp((data.y * data.x + sdf)/(data.y + 1), -1.f, 1.f);
+			// truncate to not let a point have much more confidence than other ones
 			data.y = fmin(data.y+1, maxweight);
 			setVolume(vol, pix, data);
 			// Signed Distance Function has been truncated
