@@ -9,159 +9,206 @@
 
 #define EXTERNS
 #include "common_opencl.h"
+#include "AOCLUtils/aocl_utils.h"
 #include <sstream>
+#include <cstring>
 
-// OPEN CL STUFF
-cl_int clError = CL_SUCCESS;
-cl_platform_id platform_id = 0;
-cl_device_id device_id;             // compute device id 
-cl_context context;
-cl_program program;
-cl_command_queue commandQueue;
+#define XSTR(x) #x
+#define STR(x) XSTR(x)
 
-void opencl_clean(void) {
+#ifndef AOCX_PATH
+#define AOCX_PATH "/home/mcanales/slambench/kfusion/src/opencl/kernels.cl"
+#endif
 
-	clReleaseContext(context);
-	clReleaseCommandQueue(commandQueue);
-	clReleaseProgram(program);
+cl_int             clError;
+cl_uint            num_platforms;
+// first index corresponds to the platform
+cl_platform_id    *platform_ids;
+cl_context        *contexts;
+cl_program        *programs;
+// second index corresponds to the device in that platform
+cl_device_id     **device_lists;
+cl_command_queue **cmd_queues;
 
-	return;
+int opencl_clean(void) {
+
+    // release resources
+    clError &= clReleaseProgram(programs[0]);
+    clError &= clReleaseProgram(programs[1]);
+    clError &= clReleaseCommandQueue(cmd_queues[0][0]);
+    clError &= clReleaseCommandQueue(cmd_queues[1][0]);
+    clError &= clReleaseCommandQueue(cmd_queues[1][1]);
+    clError &= clReleaseContext(contexts[0]);
+    clError &= clReleaseContext(contexts[1]);
+    delete device_lists[1];
+    delete device_lists[0];
+
+    free(programs);
+    free(cmd_queues[0]);
+    free(cmd_queues[1]);
+    free(cmd_queues);
+    free(contexts);
+    free(device_lists);
+    free(platform_ids);
+
+    if (clError == CL_SUCCESS) return 0;
+    else return -1;
 }
 
-void opencl_init(void) {
+int opencl_init(void) {
+    size_t size;
+    int ctxs_idx = 0;
+    int num_devices;
 
-	// get the platform
+    cl_platform_info platform_info;
+    char platform_name[30];
+    clError = clGetPlatformIDs(0, NULL, &num_platforms);
+    if (clError != CL_SUCCESS) {
+        printf("ERROR: clGetPlatformIDs(0,NULL,&num_platforms) failed\n");
+        return -1; 
+    }
 
-	cl_uint num_platforms;
-	clError = clGetPlatformIDs(0, NULL, &num_platforms);
-	checkErr(clError, "clGetPlatformIDs( 0, NULL, &num_platforms );");
+    printf("Number of platforms: %d\n", num_platforms);
+    platform_ids = (cl_platform_id *) malloc(num_platforms * sizeof(cl_platform_id));
+    contexts = (cl_context *) malloc(num_platforms * sizeof(cl_context));
+    programs = (cl_program *) malloc(num_platforms * sizeof(cl_program *));
+    device_lists = (cl_device_id **) malloc(num_platforms * sizeof(cl_device_id *));
+    cmd_queues = (cl_command_queue **) malloc(num_platforms * sizeof(cl_command_queue *));
 
-	if (num_platforms <= 0) {
-		std::cout << "No platform..." << std::endl;
-		exit(1);
-	}
+    if (clGetPlatformIDs(num_platforms, platform_ids, NULL) != CL_SUCCESS) {
+        printf("ERROR: clGetPlatformIDs(num_platforms,platform_ids,NULL) failed\n");
+        return -1;
+    }
 
-	cl_platform_id* platforms = new cl_platform_id[num_platforms];
-	clError = clGetPlatformIDs(num_platforms, platforms, NULL);
-	checkErr(clError, "clGetPlatformIDs( num_platforms, &platforms, NULL );");
-	if (num_platforms > 1) {
-		char platformName[256];
-		clError = clGetPlatformInfo(platforms[0], CL_PLATFORM_VENDOR,
-				sizeof(platformName), platformName, NULL);
-		std::cerr << "Multiple platforms found defaulting to: " << platformName
-				<< std::endl;
-	}
-	platform_id = platforms[0];
-	if (getenv("OPENCL_PLATEFORM"))
-		platform_id = platforms[1];
-	delete platforms;
+    for(int i=0; i<num_platforms; i++){
+        clGetPlatformInfo(platform_ids[i], CL_PLATFORM_NAME, 30, platform_name, NULL);
+        printf("Platform %d: %s\n", i, platform_name);
+    }
 
-	// Connect to a compute device
-	//
-	cl_uint device_count = 0;
-	clError = clGetDeviceIDs(platform_id, CL_DEVICE_TYPE_ALL, 0, NULL,
-			&device_count);
-	checkErr(clError, "Failed to create a device group");
-	cl_device_id* deviceIds = (cl_device_id*) malloc(
-			sizeof(cl_device_id) * device_count);
-	clError = clGetDeviceIDs(platform_id, CL_DEVICE_TYPE_ALL, device_count,
-			deviceIds, NULL);
-	if (device_count > 1) {
-		char device_name[256];
-		int compute_units;
-		clError = clGetDeviceInfo(deviceIds[0], CL_DEVICE_NAME,
-				sizeof(device_name), device_name, NULL);
-		checkErr(clError, "clGetDeviceInfo failed");
-		clError = clGetDeviceInfo(deviceIds[0], CL_DEVICE_MAX_COMPUTE_UNITS,
-				sizeof(cl_uint), &compute_units, NULL);
-		checkErr(clError, "clGetDeviceInfo failed");
-		std::cerr << "Multiple devices found defaulting to: " << device_name;
-		std::cerr << " with " << compute_units << " compute units" << std::endl;
-	}
-	device_id = deviceIds[0];
-	delete deviceIds;
-	// Create a compute context 
-	//
-	context = clCreateContext(0, 1, &device_id, NULL, NULL, &clError);
-	checkErr(clError, "Failed to create a compute context!");
+    /* ---- */
+    /* FPGA */
+    /* ---- */
 
-	// Create a command commands
-	//
-    #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-	commandQueue = clCreateCommandQueue(context, device_id, 0, &clError);
-	checkErr(clError, "Failed to create a command commands!");
+    // Intel Altera is idx=0
+    // cl_context_properties:
+    // Specifies a list of context property names and their corresponding values. Each property name is immediately followed by the corresponding desired value.
+    // The list is terminated with 0. properties can be NULL in which case the platform that is selected is implementation-defined.
+    // The list of supported properties is described in the table below.
+    cl_context_properties ctxprop_fpga[] = { CL_CONTEXT_PLATFORM, (cl_context_properties) platform_ids[0], 0};
 
-	// READ KERNEL FILENAME
-	std::string filename = "NOTDEFINED.cl";
-	char const* tmp_name = getenv("OPENCL_KERNEL");
-	if (tmp_name) {
-		filename = std::string(tmp_name);
-	} else {
-		filename = std::string(__FILE__);
-		filename = filename.substr(0, filename.length() - 17);
-		filename += "/kernels.cl";
+    contexts[0] = clCreateContextFromType(ctxprop_fpga, CL_DEVICE_TYPE_ACCELERATOR, NULL, NULL, NULL);
+    if(!contexts[0]) {
+        printf("ERROR: clCreateContextFromType(%s) failed\n", "FPGA");
+        return -1;
+    }
 
-	}
+    // get the list of FPGAs
+    clError = clGetContextInfo(contexts[0], CL_CONTEXT_DEVICES, 0, NULL, &size);
+    num_devices = (int) (size / sizeof(cl_device_id));
+    
+    if( clError != CL_SUCCESS || num_devices < 1 ) {
+        printf("ERROR: clGetContextInfo() failed\n");
+        return -1;
+    }
 
-	// READ OPENCL_PARAMETERS
-	std::string compile_parameters = "";
-	char const* tmp_params = getenv("OPENCL_PARAMETERS");
-	if (tmp_params) {
-		compile_parameters = std::string(tmp_params);
-	}
+    device_lists[0] = new cl_device_id[num_devices];
+    clError = clGetContextInfo(contexts[0], CL_CONTEXT_DEVICES, size, device_lists[0], NULL);
+    if( clError != CL_SUCCESS ) {
+        printf("ERROR: clGetContextInfo() failed\n");
+        return -1;
+    }
 
-	std::ifstream kernelFile(filename.c_str(), std::ios::in);
+    cmd_queues[0][0] = clCreateCommandQueue(contexts[0], device_lists[0][0], 0, NULL);
+    if( !cmd_queues[0][0] ) {
+        printf("ERROR: clCreateCommandQueue() FPGA failed\n");
+        return -1;
+    }
 
-	if (!kernelFile.is_open()) {
-		std::cout << "Unable to open " << filename << ". " << __FILE__ << ":"
-				<< __LINE__ << "Please set OPENCL_KERNEL" << std::endl;
-		exit(1);
-	}
+    device_lists[0] = aocl_utils::getDevices(platform_ids[0], CL_DEVICE_TYPE_ALL, &num_devices);
 
-	/*
-	 * Read the kernel file into an output stream.
-	 * Convert this into a char array for passing to OpenCL.
-	 */
-	std::ostringstream outputStringStream;
-	outputStringStream << kernelFile.rdbuf();
-	std::string srcStdStr = outputStringStream.str();
-	const char* charSource = srcStdStr.c_str();
+    // create and build the FPGA program
+    std::string binary_file = aocl_utils::getBoardBinaryFile(STR(AOCX_PATH), device_lists[0][0]);
+    printf("Using AOCX: %s\n", binary_file.c_str());
+    cl_program program_fpga = aocl_utils::createProgramFromBinary(contexts[0], binary_file.c_str(), &device_lists[0][0], 1);
+    clError = clBuildProgram(program_fpga, 0, NULL, NULL, NULL, NULL);
+    if (clError != CL_SUCCESS) {
+        printf("ERROR: FPGA clBuildProgram() => %d\n", clError);
+        return -1;
+    }
 
-	kernelFile.close();
-	// Create the compute program from the source buffer
-	//
-	program = clCreateProgramWithSource(context, 1, (const char **) &charSource,
-			NULL, &clError);
-	if (!program) {
-		printf("Error: Failed to create compute program!\n");
-		exit(1);
-	}
+    /* ---- */
+    /* GPUs */
+    /* ---- */
 
-	// Build the program executable
-	//
-	clError = clBuildProgram(program, 0, NULL, compile_parameters.c_str(), NULL,
-			NULL);
+    // NVIDIA CUDA is idx=1
+    cl_context_properties ctxprop_gpu[] = { CL_CONTEXT_PLATFORM, (cl_context_properties) platform_ids[1], 0};
+    contexts[1] = clCreateContextFromType(ctxprop_gpu, CL_DEVICE_TYPE_GPU, NULL, NULL, NULL);
+    if( !contexts[1] ) {
+        printf("ERROR: clCreateContextFromType(%s) failed\n", "GPU");
+        return -1;
+    }
 
-	/* Get the size of the build log. */
-	size_t logSize = 0;
-	clGetProgramBuildInfo(program, device_id, CL_PROGRAM_BUILD_LOG, 0, NULL,
-			&logSize);
+    clError = clGetContextInfo(contexts[1], CL_CONTEXT_DEVICES, 0, NULL, &size);
+    num_devices = (int) (size / sizeof(cl_device_id));
+    
+    if( clError != CL_SUCCESS || num_devices < 1 ) {
+        printf("ERROR: clGetContextInfo() failed\n");
+        return -1;
+    }
+    device_lists[1] = new cl_device_id[num_devices];
+    if( !device_lists[1] ) {
+        printf("ERROR: new cl_device_id[] failed\n");
+        return -1;
+    }
+    clError = clGetContextInfo(contexts[1], CL_CONTEXT_DEVICES, size, device_lists[1], NULL);
+    if( clError != CL_SUCCESS ) {
+        printf("ERROR: clGetContextInfo() failed\n");
+        return -1;
+    }
 
-	if (clError != CL_SUCCESS) {
-		if (logSize > 1) {
-			char* log = new char[logSize];
-			clGetProgramBuildInfo(program, device_id, CL_PROGRAM_BUILD_LOG,
-					logSize, log, NULL);
+    cmd_queues[1][0] = clCreateCommandQueue(contexts[1], device_lists[1][0], 0, NULL);
+    if( !cmd_queues[1][0] ) {
+        printf("ERROR: clCreateCommandQueue() GPU 0 failed\n");
+        return -1;
+    }
+    cmd_queues[1][1] = clCreateCommandQueue(contexts[1], device_lists[1][1], 0, NULL);
+    if( !cmd_queues[1][1] ) {
+        printf("ERROR: clCreateCommandQueue() GPU 1 failed\n");
+        return -1;
+    }
 
-			std::string stringChars(log, logSize);
-			std::cerr << "Build log:\n " << stringChars << std::endl;
+    // try to read the kernel source
+    int sourcesize = 1024*1024;
+    char *source = (char *) calloc(sourcesize, sizeof(char)); 
+    if(!source) {
+        printf("ERROR: calloc(%d) failed\n", sourcesize);
+        return -1;
+    }
 
-			delete[] log;
-		}
-		printf("Error: Failed to build program executable! %d\n", clError);
-		exit(1);
-	}
+    char const * tempchar = "./kernels.cl";
+    FILE *fp = fopen(tempchar, "rb"); 
+    if(!fp) {
+        printf("ERROR: unable to open '%s'\n", tempchar);
+        return -1;
+    }
+    fread(source + strlen(source), sourcesize, 1, fp);
+    fclose(fp);
 
-	return;
+    cl_int clError = 0;
+    const char *slist[2] = { source, 0 };
+
+    // create and build the GPU program
+    cl_program program_gpus = clCreateProgramWithSource(contexts[1], 1, slist, NULL, &clError);
+    if(clError != CL_SUCCESS) {
+        printf("ERROR: GPUs clCreateProgramWithSource() => %d\n", clError);
+        return -1;
+    }
+    clError = clBuildProgram(program_gpus, 0, NULL, NULL, NULL, NULL);
+    if(clError != CL_SUCCESS) {
+        printf("ERROR: GPUs clBuildProgram() => %d\n", clError);
+        return -1;
+    }
+
+    return 0;
 
 }
