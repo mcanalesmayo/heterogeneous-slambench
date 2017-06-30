@@ -12,6 +12,10 @@ import numpy
 import csv
 import os.path
 
+# open files
+
+print "Get KFusion output data for version with commit {0}, execution id {1}".format('a', 'b')
+
 if len(sys.argv) != 6 :
     print "1st param: benchmark log file\n"
     print "2nd param: original scene camera position file\n"
@@ -32,7 +36,7 @@ timestamp = sys.argv[3].strip()
 commitHash = sys.argv[4].strip()
 
 # open benchmark log file first
-print "Get KFusion output data for version with commit {0}, execution id {1}" % (str(commitHash), str(timestamp))
+print "Get KFusion output data for version with commit {0}, execution id {1}".format(str(commitHash), str(timestamp))
 framesDropped = 0
 validFrames = 0
 lastFrame = -1
