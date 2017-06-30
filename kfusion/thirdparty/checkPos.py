@@ -14,8 +14,6 @@ import os.path
 
 # open files
 
-print "Get KFusion output data for version with commit {0}, execution id {1}".format('a', 'b')
-
 if len(sys.argv) != 6 :
     print "1st param: benchmark log file\n"
     print "2nd param: original scene camera position file\n"
