@@ -5,6 +5,8 @@
 2 = -s 4.8 -p 0.34,0.5,0.24 -z 4 -c 2 -r 2 -k 481.2,480,320,240
 3 = -s 5.0 -p 0.2685,0.5,0.4 -z 4 -c 2 -r 2 -k 481.2,480,320,240
 
+TIMESTAMP=$(shell date "+%Y_%m_%d_%H_%M_%S")
+COMMIT_HASH=$(shell git rev-parse --verify HEAD)
 ROOT_DIR=$(shell pwd)
 TOON_DIR=${ROOT_DIR}/TooN/install_dir
 TOON_INCLUDE_DIR=${TOON_DIR}/include/
@@ -50,27 +52,27 @@ livingRoom%.gt.freiburg :
 	$(MAKE) -C build  $(MFLAGS) kfusion-benchmark-opencl oclwrapper
 	LD_PRELOAD=./build/kfusion/thirdparty/liboclwrapper.so ./build/kfusion/kfusion-benchmark-opencl $($(*F)) -i  living_room_traj$(*F)_loop.raw -o benchmark.$@ 2> oclwrapper.$@
 	cat  oclwrapper.$@ |grep -E ".+ [0-9]+ [0-9]+ [0-9]+" |cut -d" " -f1,4 >   kernels.$@
-	./kfusion/thirdparty/checkPos.py benchmark.$@  livingRoom$(*F).gt.freiburg > resume.$@
-	./kfusion/thirdparty/checkKernels.py kernels.$@   >> resume.$@
+	./kfusion/thirdparty/checkPos.py benchmark.$@  livingRoom$(*F).gt.freiburg ${TIMESTAMP} ${COMMIT_HASH} ${ROOT_DIR}/$@.pos.csv > resume.$@
+	./kfusion/thirdparty/checkKernels.py kernels.$@ ${TIMESTAMP} ${COMMIT_HASH} ${ROOT_DIR}/$@.kernels.csv >> resume.$@
 
 %.cpp.log  :  living_room_traj%_loop.raw livingRoom%.gt.freiburg
 	$(MAKE) -C build  $(MFLAGS) kfusion-benchmark-cpp
 	KERNEL_TIMINGS=1 ./build/kfusion/kfusion-benchmark-cpp $($(*F)) -i  living_room_traj$(*F)_loop.raw -o  benchmark.$@ 2> kernels.$@
-	./kfusion/thirdparty/checkPos.py benchmark.$@  livingRoom$(*F).gt.freiburg > resume.$@
-	./kfusion/thirdparty/checkKernels.py kernels.$@   >> resume.$@
+	./kfusion/thirdparty/checkPos.py benchmark.$@  livingRoom$(*F).gt.freiburg ${TIMESTAMP} ${COMMIT_HASH} ${ROOT_DIR}/$@.pos.csv > resume.$@
+	./kfusion/thirdparty/checkKernels.py kernels.$@ ${TIMESTAMP} ${COMMIT_HASH} ${ROOT_DIR}/$@.kernels.csv >> resume.$@
 
 %.openmp.log  :  living_room_traj%_loop.raw livingRoom%.gt.freiburg
 	$(MAKE) -C build  $(MFLAGS) kfusion-benchmark-openmp
 	KERNEL_TIMINGS=1 ./build/kfusion/kfusion-benchmark-openmp $($(*F)) -i  living_room_traj$(*F)_loop.raw -o  benchmark.$@ 2> kernels.$@
-	./kfusion/thirdparty/checkPos.py benchmark.$@  livingRoom$(*F).gt.freiburg > resume.$@
-	./kfusion/thirdparty/checkKernels.py kernels.$@   >> resume.$@
+	./kfusion/thirdparty/checkPos.py benchmark.$@  livingRoom$(*F).gt.freiburg ${TIMESTAMP} ${COMMIT_HASH} ${ROOT_DIR}/$@.pos.csv > resume.$@
+	./kfusion/thirdparty/checkKernels.py kernels.$@ ${TIMESTAMP} ${COMMIT_HASH} ${ROOT_DIR}/$@.kernels.csv >> resume.$@
 
 %.cuda.log  : living_room_traj%_loop.raw livingRoom%.gt.freiburg
 	$(MAKE) -C build  $(MFLAGS) kfusion-benchmark-cuda
 	nvprof --print-gpu-trace ./build/kfusion/kfusion-benchmark-cuda $($(*F)) -i  living_room_traj$(*F)_loop.raw -o  benchmark.$@ 2> nvprof.$@ || true
 	cat  nvprof.$@ | kfusion/thirdparty/nvprof2log.py >   kernels.$@
-	./kfusion/thirdparty/checkPos.py benchmark.$@  livingRoom$(*F).gt.freiburg > resume.$@
-	./kfusion/thirdparty/checkKernels.py kernels.$@   >> resume.$@
+	./kfusion/thirdparty/checkPos.py benchmark.$@  livingRoom$(*F).gt.freiburg ${TIMESTAMP} ${COMMIT_HASH} ${ROOT_DIR}/$@.pos.csv > resume.$@
+	./kfusion/thirdparty/checkKernels.py kernels.$@ ${TIMESTAMP} ${COMMIT_HASH} ${ROOT_DIR}/$@.kernels.csv >> resume.$@
 
 
 #### GENERAL GENERATION ####

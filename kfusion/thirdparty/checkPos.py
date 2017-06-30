@@ -9,6 +9,8 @@ import re
 import math
 import numpy
 
+import csv
+import os.path
 
 kfusion_log_regex  =      "([0-9]+[\s]*)\\t" 
 kfusion_log_regex += 8 *  "([0-9.]+)\\t" 
@@ -21,8 +23,12 @@ nuim_log_regex += 7 * "\\s+([-0-9e.]+)\\s*"
 
 # open files
 
-if len(sys.argv) != 3 :
-    print "I need two parameters, the benchmark log file and the original scene camera position file."
+if len(sys.argv) != 6 :
+    print "1st param: benchmark log file\n"
+    print "2nd param: original scene camera position file\n"
+    print "3rd param: timestamp (as execution identifier)\n"
+    print "4th param: commit hash (as version identifier)\n"
+    print "5th param: CSV filename\n"
     exit (1)
 
 # open benchmark log file first
@@ -141,18 +147,38 @@ print "Runtimes are in seconds and the absolute trajectory error (ATE) is in met
 print "The ATE measure accuracy, check this number to see how precise your computation is."
 print "Acceptable values are in the range of few centimeters."
 
-for variable in sorted(fulldata.keys()) :
-    if "X" in variable or "Z" in variable or "Y" in variable or "frame" in variable  or "tracked" in variable      or "integrated" in variable  :  
-        continue
+timestamp = sys.argv[3].strip()
+commitHash = sys.argv[4].strip()
+filename = sys.argv[5].strip()
+file_exists = os.path.isfile(filename)
+csvHeader = ['Timestamp', 'Commit Hash', 'Name', 'Min', 'Max', 'Mean', 'Total']
+with open(filename, 'a') as f:
+    writer = csv.writer(f, delimiter=',')
 
-    if (framesDropped == 0)  and (str(variable) == "ATE_wrt_kfusion"):
-        continue
-		
-    print "%20.20s" % str(variable),
-    print "\tMin : %6.6f" % min(fulldata[variable]),
-    print "\tMax : %0.6f"  % max(fulldata[variable]),
-    print "\tMean : %0.6f" % numpy.mean(fulldata[variable]),
-    print "\tTotal : %0.8f" % sum(fulldata[variable])
+    # if file didn't exist then header must be appended
+    if not file_exists:
+        writer.writerow(csvHeader)
+
+    for variable in sorted(fulldata.keys()) :
+        if "X" in variable or "Z" in variable or "Y" in variable or "frame" in variable or "tracked" in variable or "integrated" in variable:  
+            continue
+
+        if (framesDropped == 0) and (str(variable) == "ATE_wrt_kfusion"):
+            continue
+    	
+        dataName = str(variable)
+        dataMin = min(fulldata[variable])
+        dataMax = max(fulldata[variable])
+        dataMean = numpy.mean(fulldata[variable])
+        dataTotal = sum(fulldata[variable])
+        csvRow = [timestamp, commitHash, dataName, dataMin, dataMax, dataMean, dataTotal]
+        writer.writerow(csvRow)
+
+        print "%20.20s" % dataName,
+        print "\tMin : %6.6f" % dataMin,
+        print "\tMax : %0.6f"  % dataMax,
+        print "\tMean : %0.6f" % dataMean,
+        print "\tTotal : %0.8f" % dataTotal
 
 #first2 = []S
 #derive = []

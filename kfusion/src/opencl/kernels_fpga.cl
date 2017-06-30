@@ -380,466 +380,466 @@ __kernel void bilateralFilterKernel( __global float * restrict out,
 
 }
 
-__kernel void renderVolumeKernel( __global uchar * restrict render,
-		__global short2 * restrict v_data,
-		const uint3 v_size,
-		const float3 v_dim,
-		const float4 view0,
-		const float4 view1,
-		const float4 view2,
-		const float4 view3,
-		const float nearPlane,
-		const float farPlane,
-		const float step,
-		const float largestep,
-		const float3 light,
-		const float3 ambient) {
-
-	Matrix4 view;
-	view.data[0] = view0;
-	view.data[1] = view1;
-	view.data[2] = view2;
-	view.data[3] = view3;
-
-	const Volume v = {v_size, v_dim,v_data};
-
-	const uint2 pos = (uint2) (get_global_id(0),get_global_id(1));
-	const int sizex = get_global_size(0);
-
-	float4 hit = raycast( v, pos, view, nearPlane, farPlane,step, largestep);
-
-	if(hit.w > 0) {
-		const float3 test = as_float3(hit);
-		float3 surfNorm = grad(test,v);
-		if(length(surfNorm) > 0) {
-			const float3 diff = normalize(light - test);
-			const float dir = fmax(dot(normalize(surfNorm), diff), 0.f);
-			const float3 col = clamp((float3)(dir) + ambient, 0.f, 1.f) * (float3) 255;
-			vstore4((uchar4)(col.x, col.y, col.z, 0), pos.x + sizex * pos.y, render); // The forth value in uchar4 is padding for memory alignement and so it is for following uchar4 
-		} else {
-			vstore4((uchar4)(0, 0, 0, 0), pos.x + sizex * pos.y, render);
-		}
-	} else {
-		vstore4((uchar4)(0, 0, 0, 0), pos.x + sizex * pos.y, render);
-	}
-
-}
-
-/************** KFUSION KERNELS ***************/
-
-__kernel void raycastKernel( __global float * restrict pos3D,  //float3
-		__global float * restrict normal,//float3
-		__global short2 * restrict v_data,
-		const uint3 v_size,
-		const float3 v_dim,
-		const float4 view0,
-		const float4 view1,
-		const float4 view2,
-		const float4 view3,
-		const float nearPlane,
-		const float farPlane,
-		const float step,
-		const float largestep ) {
-
-	Matrix4 view;
-	view.data[0] = view0;
-	view.data[1] = view1;
-	view.data[2] = view2;
-	view.data[3] = view3;
-
-	const Volume volume = {v_size, v_dim, v_data};
-
-	const uint2 pos = (uint2) (get_global_id(0), get_global_id(1));
-	const int sizex = get_global_size(0);
-
-	const float4 hit = raycast(volume, pos, view, nearPlane, farPlane, step, largestep );
-	const float3 test = as_float3(hit);
-
-	if(hit.w > 0.0f) {
-		vstore3(test, pos.x + sizex * pos.y, pos3D);
-		float3 surfNorm = grad(test, volume);
-		if(length(surfNorm) == 0) {
-			//float3 n =  (INVALID,0,0);//vload3(pos.x + sizex * pos.y,normal);
-			//n.x=INVALID;
-			vstore3((float3)(INVALID, INVALID, INVALID), pos.x + sizex * pos.y, normal);
-		} else {
-			vstore3(normalize(surfNorm), pos.x + sizex * pos.y, normal);
-		}
-	} else {
-		vstore3((float3)(0), pos.x + sizex * pos.y, pos3D);
-		vstore3((float3)(INVALID, INVALID, INVALID), pos.x + sizex * pos.y, normal);
-	}
-}
-
-__kernel void integrateKernel (
-		__global short2 * restrict v_data,
-		const uint3 v_size,
-		const float3 v_dim,
-		__global const float * restrict depth,
-		const uint2 depthSize,
-		const float4 invTrack0,
-		const float4 invTrack1,
-		const float4 invTrack2,
-		const float4 invTrack3,
-		const float4 K0,
-		const float4 K1,
-		const float4 K2,
-		const float4 K3,
-		const float mu,
-		const float maxweight,
-		const float3 delta,
-		const float3 cameraDelta
-) {
-
-	Matrix4 invTrack;
-	invTrack.data[0] = invTrack0;
-	invTrack.data[1] = invTrack1;
-	invTrack.data[2] = invTrack2;
-	invTrack.data[3] = invTrack3;
-
-	Matrix4 K;
-	K.data[0] = K0;
-	K.data[1] = K1;
-	K.data[2] = K2;
-	K.data[3] = K3;
-
-	Volume vol; vol.data = v_data; vol.size = v_size; vol.dim = v_dim;
-
-	uint3 pix = (uint3) (get_global_id(0), get_global_id(1), 0);
-	const int sizex = get_global_size(0);
-
-	float3 pos = Mat4TimeFloat3(invTrack, posVolume(vol, pix));
-	float3 cameraX = Mat4TimeFloat3(K, pos);
-
-	// vol.size.z = depth of the volume resolution
-	for(pix.z = 0; pix.z < vol.size.z; ++pix.z, pos += delta, cameraX += cameraDelta) {
-		// some near plane constraint
-		if(pos.z < 0.0001f) continue;
-        // get pixel X & Y coordinates in 2D camera plane
-		const float2 pixel = (float2) (cameraX.x/cameraX.z + 0.5f, cameraX.y/cameraX.z + 0.5f);
-
-        // depthSize = computationSize
-		if(pixel.x < 0 || pixel.x > depthSize.x-1 || pixel.y < 0 || pixel.y > depthSize.y-1) continue;
-        // pixel as integer coordinates in 2D camera plane
-		const uint2 px = (uint2)(pixel.x, pixel.y);
-		float depthpx = depth[px.x + depthSize.x * px.y];
-
-		if(depthpx == 0) continue;
-
-		// diff = eta
-		const float diff = ((depthpx) - cameraX.z) * sqrt(1 + sq(pos.x/pos.z) + sq(pos.y/pos.z));
-		// if diff > -mu
-		// 		min(1, eta/mu) * sgn(eta)
-		// sgn(X) = {-1, 0, 1} (sign of X)
-		if(diff > -mu) {
-			// Signed Distance Function
-			const float sdf = fmin(1.f, diff/mu);
-			float2 data = getVolume(vol, pix);
-			data.x = clamp((data.y * data.x + sdf)/(data.y + 1), -1.f, 1.f);
-			// truncate to not let a point have much more confidence than other ones
-			data.y = fmin(data.y+1, maxweight);
-			setVolume(vol, pix, data);
-			// Signed Distance Function has been truncated
-		}
-		// null otherwise
-	}
-
-}
-
-// inVertex iterate
-__kernel void trackKernel (
-		__global TrackData * restrict output,
-		const uint2 outputSize,
-		__global const float * restrict inVertex,// float3
-		const uint2 inVertexSize,
-		__global const float * restrict inNormal,// float3
-		const uint2 inNormalSize,
-		__global const float * restrict refVertex,// float3
-		const uint2 refVertexSize,
-		__global const float * restrict refNormal,// float3
-		const uint2 refNormalSize,
-		const float4 Ttrack0,
-		const float4 Ttrack1,
-		const float4 Ttrack2,
-		const float4 Ttrack3,
-		const float4 view0,
-		const float4 view1,
-		const float4 view2,
-		const float4 view3,
-		const float dist_threshold,
-		const float normal_threshold
-) {
-
-	Matrix4 Ttrack;
-	Ttrack.data[0] = Ttrack0;
-	Ttrack.data[1] = Ttrack1;
-	Ttrack.data[2] = Ttrack2;
-	Ttrack.data[3] = Ttrack3;
-
-	Matrix4 view;
-	view.data[0] = view0;
-	view.data[1] = view1;
-	view.data[2] = view2;
-	view.data[3] = view3;
-
-	const uint2 pixel = (uint2)(get_global_id(0),get_global_id(1));
-
-	if(pixel.x >= inVertexSize.x || pixel.y >= inVertexSize.y ) {return;}
-
-	float3 inNormalPixel = vload3(pixel.x + inNormalSize.x * pixel.y,inNormal);
-
-	if(inNormalPixel.x == INVALID ) {
-		output[pixel.x + outputSize.x * pixel.y].result = -1;
-		return;
-	}
-
-	float3 inVertexPixel = vload3(pixel.x + inVertexSize.x * pixel.y,inVertex);
-	const float3 projectedVertex = Mat4TimeFloat3 (Ttrack , inVertexPixel);
-	const float3 projectedPos = Mat4TimeFloat3 ( view , projectedVertex);
-	const float2 projPixel = (float2) ( projectedPos.x / projectedPos.z + 0.5f, projectedPos.y / projectedPos.z + 0.5f);
-
-	if(projPixel.x < 0 || projPixel.x > refVertexSize.x-1 || projPixel.y < 0 || projPixel.y > refVertexSize.y-1 ) {
-		output[pixel.x + outputSize.x * pixel.y].result = -2;
-		return;
-	}
-
-	const uint2 refPixel = (uint2) (projPixel.x, projPixel.y);
-	const float3 referenceNormal = vload3(refPixel.x + refNormalSize.x * refPixel.y,refNormal);
-
-	if(referenceNormal.x == INVALID) {
-		output[pixel.x + outputSize.x * pixel.y].result = -3;
-		return;
-	}
-
-	const float3 diff = vload3(refPixel.x + refVertexSize.x * refPixel.y,refVertex) - projectedVertex;
-	const float3 projectedNormal = myrotate(Ttrack, inNormalPixel);
-
-	if(length(diff) > dist_threshold ) {
-		output[pixel.x + outputSize.x * pixel.y].result = -4;
-		return;
-	}
-	if(dot(projectedNormal, referenceNormal) < normal_threshold) {
-		output[pixel.x + outputSize.x * pixel.y] .result = -5;
-		return;
-	}
-
-	output[pixel.x + outputSize.x * pixel.y].result = 1;
-	output[pixel.x + outputSize.x * pixel.y].error = dot(referenceNormal, diff);
-
-	vstore3(referenceNormal,0,(output[pixel.x + outputSize.x * pixel.y].J));
-	vstore3(cross(projectedVertex, referenceNormal),1,(output[pixel.x + outputSize.x * pixel.y].J));
-
-}
-
-__kernel void reduceKernel (
-		__global float * restrict out,
-		__global const TrackData * restrict J,
-		const uint2 JSize,
-		const uint2 size,
-		__local float * S
-) {
-
-	uint blockIdx = get_group_id(0);
-	uint blockDim = get_local_size(0);
-	uint threadIdx = get_local_id(0);
-	uint gridDim = get_num_groups(0);
-
-	const uint sline = threadIdx;
-
-	float sums[32];
-	float * jtj = sums + 7;
-	float * info = sums + 28;
-
-	for(uint i = 0; i < 32; ++i)
-	sums[i] = 0.0f;
-
-	for(uint y = blockIdx; y < size.y; y += gridDim) {
-		for(uint x = sline; x < size.x; x += blockDim ) {
-			const TrackData row = J[x + y * JSize.x];
-			if(row.result < 1) {
-				info[1] += row.result == -4 ? 1 : 0;
-				info[2] += row.result == -5 ? 1 : 0;
-				info[3] += row.result > -4 ? 1 : 0;
-				continue;
-			}
-
-			// Error part
-			sums[0] += row.error * row.error;
-
-			// JTe part
-			for(int i = 0; i < 6; ++i)
-			sums[i+1] += row.error * row.J[i];
-
-			jtj[0] += row.J[0] * row.J[0];
-			jtj[1] += row.J[0] * row.J[1];
-			jtj[2] += row.J[0] * row.J[2];
-			jtj[3] += row.J[0] * row.J[3];
-			jtj[4] += row.J[0] * row.J[4];
-			jtj[5] += row.J[0] * row.J[5];
-
-			jtj[6] += row.J[1] * row.J[1];
-			jtj[7] += row.J[1] * row.J[2];
-			jtj[8] += row.J[1] * row.J[3];
-			jtj[9] += row.J[1] * row.J[4];
-			jtj[10] += row.J[1] * row.J[5];
-
-			jtj[11] += row.J[2] * row.J[2];
-			jtj[12] += row.J[2] * row.J[3];
-			jtj[13] += row.J[2] * row.J[4];
-			jtj[14] += row.J[2] * row.J[5];
-
-			jtj[15] += row.J[3] * row.J[3];
-			jtj[16] += row.J[3] * row.J[4];
-			jtj[17] += row.J[3] * row.J[5];
-
-			jtj[18] += row.J[4] * row.J[4];
-			jtj[19] += row.J[4] * row.J[5];
-
-			jtj[20] += row.J[5] * row.J[5];
-			// extra info here
-			info[0] += 1;
-		}
-	}
-
-	for(int i = 0; i < 32; ++i) // copy over to shared memory
-	S[sline * 32 + i] = sums[i];
-
-	barrier(CLK_LOCAL_MEM_FENCE);
-
-	if(sline < 32) { // sum up columns and copy to global memory in the final 32 threads
-		for(unsigned i = 1; i < blockDim; ++i)
-		S[sline] += S[i * 32 + sline];
-		out[sline+blockIdx*32] = S[sline];
-	}
-}
-
-__kernel void depth2vertexKernel( __global float * restrict vertex, // float3
-		const uint2 vertexSize ,
-		const __global float * restrict depth,
-		const uint2 depthSize ,
-		const float4 invK0,
-		const float4 invK1,
-		const float4 invK2,
-		const float4 invK3) {
-
-	Matrix4 invK;
-	invK.data[0] = invK0;
-	invK.data[1] = invK1;
-	invK.data[2] = invK2;
-	invK.data[3] = invK3;
-
-	uint2 pixel = (uint2) (get_global_id(0),get_global_id(1));
-	float3 vert = (float3)(get_global_id(0),get_global_id(1),1.0f);
-
-	if(pixel.x >= depthSize.x || pixel.y >= depthSize.y ) {
-		return;
-	}
-
-	float3 res = (float3) (0);
-
-	if(depth[pixel.x + depthSize.x * pixel.y] > 0) {
-		res = depth[pixel.x + depthSize.x * pixel.y] * (myrotate(invK, (float3)(pixel.x, pixel.y, 1.f)));
-	}
-
-	vstore3(res, pixel.x + vertexSize.x * pixel.y,vertex); 	// vertex[pixel] =
-
-}
-
-__kernel void vertex2normalKernel( __global float * restrict normal,    // float3
-		const uint2 normalSize,
-		const __global float * restrict vertex ,
-		const uint2 vertexSize ) {  // float3
-
-	uint2 pixel = (uint2) (get_global_id(0),get_global_id(1));
-
-	if(pixel.x >= vertexSize.x || pixel.y >= vertexSize.y )
-	return;
-
-	//const float3 left = vertex[(uint2)(max(int(pixel.x)-1,0), pixel.y)];
-	//const float3 right = vertex[(uint2)(min(pixel.x+1,vertex.size.x-1), pixel.y)];
-	//const float3 up = vertex[(uint2)(pixel.x, max(int(pixel.y)-1,0))];
-	//const float3 down = vertex[(uint2)(pixel.x, min(pixel.y+1,vertex.size.y-1))];
-
-	uint2 vleft = (uint2)(max((int)(pixel.x)-1,0), pixel.y);
-	uint2 vright = (uint2)(min(pixel.x+1,vertexSize.x-1), pixel.y);
-	uint2 vup = (uint2)(pixel.x, max((int)(pixel.y)-1,0));
-	uint2 vdown = (uint2)(pixel.x, min(pixel.y+1,vertexSize.y-1));
-
-	const float3 left = vload3(vleft.x + vertexSize.x * vleft.y,vertex);
-	const float3 right = vload3(vright.x + vertexSize.x * vright.y,vertex);
-	const float3 up = vload3(vup.x + vertexSize.x * vup.y,vertex);
-	const float3 down = vload3(vdown.x + vertexSize.x * vdown.y,vertex);
-	/*
-	 unsigned long int val =  0 ;
-	 val = max(((int) pixel.x)-1,0) + vertexSize.x * pixel.y;
-	 const float3 left   = vload3(   val,vertex);
-
-	 val =  min(pixel.x+1,vertexSize.x-1)                  + vertexSize.x *     pixel.y;
-	 const float3 right  = vload3(    val     ,vertex);
-	 val =   pixel.x                        + vertexSize.x *     max(((int) pixel.y)-1,0)  ;
-	 const float3 up     = vload3(  val ,vertex);
-	 val =  pixel.x                       + vertexSize.x *   min(pixel.y+1,vertexSize.y-1)   ;
-	 const float3 down   = vload3(  val   ,vertex);
-	 */
-	if(left.z == 0 || right.z == 0|| up.z ==0 || down.z == 0) {
-		//float3 n = vload3(pixel.x + normalSize.x * pixel.y,normal);
-		//n.x=INVALID;
-		vstore3((float3)(INVALID,INVALID,INVALID),pixel.x + normalSize.x * pixel.y,normal);
-		return;
-	}
-	const float3 dxv = right - left;
-	const float3 dyv = down - up;
-	vstore3((float3) normalize(cross(dyv, dxv)), pixel.x + pixel.y * normalSize.x, normal );
-
-}
-
-__kernel void mm2metersKernel(
-		__global float * restrict depth,
-		const uint2 depthSize ,
-		const __global ushort * restrict in ,
-		const uint2 inSize ,
-		const int ratio ) {
-	uint2 pixel = (uint2) (get_global_id(0),get_global_id(1));
-	depth[pixel.x + depthSize.x * pixel.y] = in[pixel.x * ratio + inSize.x * pixel.y * ratio] / 1000.0f;
-}
-
-__kernel void initVolumeKernel(__global short2 * data) {
-
-	uint x = get_global_id(0);
-	uint y = get_global_id(1);
-	uint z = get_global_id(2);
-	uint3 size = (uint3) (get_global_size(0), get_global_size(1), get_global_size(2));
-	float2 d = (float2) (1.0f, 0.0f);
-
-	data[x + y * size.x + z * size.x * size.y] = (short2) (d.x * MULTIPLIER, d.y);
-
-}
-
-__kernel void halfSampleRobustImageKernel(__global float * restrict out,
-		__global const float * restrict in,
-		const uint2 inSize,
-		const float e_d,
-		const int r) {
-
-	uint2 pixel = (uint2) (get_global_id(0),get_global_id(1));
-	uint2 outSize = inSize / 2;
-
-	const uint2 centerPixel = 2 * pixel;
-
-	float sum = 0.0f;
-	float t = 0.0f;
-	const float center = in[centerPixel.x + centerPixel.y * inSize.x];
-	for(int i = -r + 1; i <= r; ++i) {
-		for(int j = -r + 1; j <= r; ++j) {
-			int2 from = (int2)(clamp((int2)(centerPixel.x + j, centerPixel.y + i), (int2)(0), (int2)(inSize.x - 1, inSize.y - 1)));
-			float current = in[from.x + from.y * inSize.x];
-			// Depth values are used in the average only if they are within 3*sigma_r of the central pixel to ensure smoothing does not occur over boundaries
-			if(fabs(current - center) < e_d) {
-				sum += 1.0f;
-				t += current;
-			}
-		}
-	}
-	out[pixel.x + pixel.y * outSize.x] = t / sum;
-
-}
+// __kernel void renderVolumeKernel( __global uchar * restrict render,
+// 		__global short2 * restrict v_data,
+// 		const uint3 v_size,
+// 		const float3 v_dim,
+// 		const float4 view0,
+// 		const float4 view1,
+// 		const float4 view2,
+// 		const float4 view3,
+// 		const float nearPlane,
+// 		const float farPlane,
+// 		const float step,
+// 		const float largestep,
+// 		const float3 light,
+// 		const float3 ambient) {
+
+// 	Matrix4 view;
+// 	view.data[0] = view0;
+// 	view.data[1] = view1;
+// 	view.data[2] = view2;
+// 	view.data[3] = view3;
+
+// 	const Volume v = {v_size, v_dim,v_data};
+
+// 	const uint2 pos = (uint2) (get_global_id(0),get_global_id(1));
+// 	const int sizex = get_global_size(0);
+
+// 	float4 hit = raycast( v, pos, view, nearPlane, farPlane,step, largestep);
+
+// 	if(hit.w > 0) {
+// 		const float3 test = as_float3(hit);
+// 		float3 surfNorm = grad(test,v);
+// 		if(length(surfNorm) > 0) {
+// 			const float3 diff = normalize(light - test);
+// 			const float dir = fmax(dot(normalize(surfNorm), diff), 0.f);
+// 			const float3 col = clamp((float3)(dir) + ambient, 0.f, 1.f) * (float3) 255;
+// 			vstore4((uchar4)(col.x, col.y, col.z, 0), pos.x + sizex * pos.y, render); // The forth value in uchar4 is padding for memory alignement and so it is for following uchar4 
+// 		} else {
+// 			vstore4((uchar4)(0, 0, 0, 0), pos.x + sizex * pos.y, render);
+// 		}
+// 	} else {
+// 		vstore4((uchar4)(0, 0, 0, 0), pos.x + sizex * pos.y, render);
+// 	}
+
+// }
+
+// /************** KFUSION KERNELS ***************/
+
+// __kernel void raycastKernel( __global float * restrict pos3D,  //float3
+// 		__global float * restrict normal,//float3
+// 		__global short2 * restrict v_data,
+// 		const uint3 v_size,
+// 		const float3 v_dim,
+// 		const float4 view0,
+// 		const float4 view1,
+// 		const float4 view2,
+// 		const float4 view3,
+// 		const float nearPlane,
+// 		const float farPlane,
+// 		const float step,
+// 		const float largestep ) {
+
+// 	Matrix4 view;
+// 	view.data[0] = view0;
+// 	view.data[1] = view1;
+// 	view.data[2] = view2;
+// 	view.data[3] = view3;
+
+// 	const Volume volume = {v_size, v_dim, v_data};
+
+// 	const uint2 pos = (uint2) (get_global_id(0), get_global_id(1));
+// 	const int sizex = get_global_size(0);
+
+// 	const float4 hit = raycast(volume, pos, view, nearPlane, farPlane, step, largestep );
+// 	const float3 test = as_float3(hit);
+
+// 	if(hit.w > 0.0f) {
+// 		vstore3(test, pos.x + sizex * pos.y, pos3D);
+// 		float3 surfNorm = grad(test, volume);
+// 		if(length(surfNorm) == 0) {
+// 			//float3 n =  (INVALID,0,0);//vload3(pos.x + sizex * pos.y,normal);
+// 			//n.x=INVALID;
+// 			vstore3((float3)(INVALID, INVALID, INVALID), pos.x + sizex * pos.y, normal);
+// 		} else {
+// 			vstore3(normalize(surfNorm), pos.x + sizex * pos.y, normal);
+// 		}
+// 	} else {
+// 		vstore3((float3)(0), pos.x + sizex * pos.y, pos3D);
+// 		vstore3((float3)(INVALID, INVALID, INVALID), pos.x + sizex * pos.y, normal);
+// 	}
+// }
+
+// __kernel void integrateKernel (
+// 		__global short2 * restrict v_data,
+// 		const uint3 v_size,
+// 		const float3 v_dim,
+// 		__global const float * restrict depth,
+// 		const uint2 depthSize,
+// 		const float4 invTrack0,
+// 		const float4 invTrack1,
+// 		const float4 invTrack2,
+// 		const float4 invTrack3,
+// 		const float4 K0,
+// 		const float4 K1,
+// 		const float4 K2,
+// 		const float4 K3,
+// 		const float mu,
+// 		const float maxweight,
+// 		const float3 delta,
+// 		const float3 cameraDelta
+// ) {
+
+// 	Matrix4 invTrack;
+// 	invTrack.data[0] = invTrack0;
+// 	invTrack.data[1] = invTrack1;
+// 	invTrack.data[2] = invTrack2;
+// 	invTrack.data[3] = invTrack3;
+
+// 	Matrix4 K;
+// 	K.data[0] = K0;
+// 	K.data[1] = K1;
+// 	K.data[2] = K2;
+// 	K.data[3] = K3;
+
+// 	Volume vol; vol.data = v_data; vol.size = v_size; vol.dim = v_dim;
+
+// 	uint3 pix = (uint3) (get_global_id(0), get_global_id(1), 0);
+// 	const int sizex = get_global_size(0);
+
+// 	float3 pos = Mat4TimeFloat3(invTrack, posVolume(vol, pix));
+// 	float3 cameraX = Mat4TimeFloat3(K, pos);
+
+// 	// vol.size.z = depth of the volume resolution
+// 	for(pix.z = 0; pix.z < vol.size.z; ++pix.z, pos += delta, cameraX += cameraDelta) {
+// 		// some near plane constraint
+// 		if(pos.z < 0.0001f) continue;
+//         // get pixel X & Y coordinates in 2D camera plane
+// 		const float2 pixel = (float2) (cameraX.x/cameraX.z + 0.5f, cameraX.y/cameraX.z + 0.5f);
+
+//         // depthSize = computationSize
+// 		if(pixel.x < 0 || pixel.x > depthSize.x-1 || pixel.y < 0 || pixel.y > depthSize.y-1) continue;
+//         // pixel as integer coordinates in 2D camera plane
+// 		const uint2 px = (uint2)(pixel.x, pixel.y);
+// 		float depthpx = depth[px.x + depthSize.x * px.y];
+
+// 		if(depthpx == 0) continue;
+
+// 		// diff = eta
+// 		const float diff = ((depthpx) - cameraX.z) * sqrt(1 + sq(pos.x/pos.z) + sq(pos.y/pos.z));
+// 		// if diff > -mu
+// 		// 		min(1, eta/mu) * sgn(eta)
+// 		// sgn(X) = {-1, 0, 1} (sign of X)
+// 		if(diff > -mu) {
+// 			// Signed Distance Function
+// 			const float sdf = fmin(1.f, diff/mu);
+// 			float2 data = getVolume(vol, pix);
+// 			data.x = clamp((data.y * data.x + sdf)/(data.y + 1), -1.f, 1.f);
+// 			// truncate to not let a point have much more confidence than other ones
+// 			data.y = fmin(data.y+1, maxweight);
+// 			setVolume(vol, pix, data);
+// 			// Signed Distance Function has been truncated
+// 		}
+// 		// null otherwise
+// 	}
+
+// }
+
+// // inVertex iterate
+// __kernel void trackKernel (
+// 		__global TrackData * restrict output,
+// 		const uint2 outputSize,
+// 		__global const float * restrict inVertex,// float3
+// 		const uint2 inVertexSize,
+// 		__global const float * restrict inNormal,// float3
+// 		const uint2 inNormalSize,
+// 		__global const float * restrict refVertex,// float3
+// 		const uint2 refVertexSize,
+// 		__global const float * restrict refNormal,// float3
+// 		const uint2 refNormalSize,
+// 		const float4 Ttrack0,
+// 		const float4 Ttrack1,
+// 		const float4 Ttrack2,
+// 		const float4 Ttrack3,
+// 		const float4 view0,
+// 		const float4 view1,
+// 		const float4 view2,
+// 		const float4 view3,
+// 		const float dist_threshold,
+// 		const float normal_threshold
+// ) {
+
+// 	Matrix4 Ttrack;
+// 	Ttrack.data[0] = Ttrack0;
+// 	Ttrack.data[1] = Ttrack1;
+// 	Ttrack.data[2] = Ttrack2;
+// 	Ttrack.data[3] = Ttrack3;
+
+// 	Matrix4 view;
+// 	view.data[0] = view0;
+// 	view.data[1] = view1;
+// 	view.data[2] = view2;
+// 	view.data[3] = view3;
+
+// 	const uint2 pixel = (uint2)(get_global_id(0),get_global_id(1));
+
+// 	if(pixel.x >= inVertexSize.x || pixel.y >= inVertexSize.y ) {return;}
+
+// 	float3 inNormalPixel = vload3(pixel.x + inNormalSize.x * pixel.y,inNormal);
+
+// 	if(inNormalPixel.x == INVALID ) {
+// 		output[pixel.x + outputSize.x * pixel.y].result = -1;
+// 		return;
+// 	}
+
+// 	float3 inVertexPixel = vload3(pixel.x + inVertexSize.x * pixel.y,inVertex);
+// 	const float3 projectedVertex = Mat4TimeFloat3 (Ttrack , inVertexPixel);
+// 	const float3 projectedPos = Mat4TimeFloat3 ( view , projectedVertex);
+// 	const float2 projPixel = (float2) ( projectedPos.x / projectedPos.z + 0.5f, projectedPos.y / projectedPos.z + 0.5f);
+
+// 	if(projPixel.x < 0 || projPixel.x > refVertexSize.x-1 || projPixel.y < 0 || projPixel.y > refVertexSize.y-1 ) {
+// 		output[pixel.x + outputSize.x * pixel.y].result = -2;
+// 		return;
+// 	}
+
+// 	const uint2 refPixel = (uint2) (projPixel.x, projPixel.y);
+// 	const float3 referenceNormal = vload3(refPixel.x + refNormalSize.x * refPixel.y,refNormal);
+
+// 	if(referenceNormal.x == INVALID) {
+// 		output[pixel.x + outputSize.x * pixel.y].result = -3;
+// 		return;
+// 	}
+
+// 	const float3 diff = vload3(refPixel.x + refVertexSize.x * refPixel.y,refVertex) - projectedVertex;
+// 	const float3 projectedNormal = myrotate(Ttrack, inNormalPixel);
+
+// 	if(length(diff) > dist_threshold ) {
+// 		output[pixel.x + outputSize.x * pixel.y].result = -4;
+// 		return;
+// 	}
+// 	if(dot(projectedNormal, referenceNormal) < normal_threshold) {
+// 		output[pixel.x + outputSize.x * pixel.y] .result = -5;
+// 		return;
+// 	}
+
+// 	output[pixel.x + outputSize.x * pixel.y].result = 1;
+// 	output[pixel.x + outputSize.x * pixel.y].error = dot(referenceNormal, diff);
+
+// 	vstore3(referenceNormal,0,(output[pixel.x + outputSize.x * pixel.y].J));
+// 	vstore3(cross(projectedVertex, referenceNormal),1,(output[pixel.x + outputSize.x * pixel.y].J));
+
+// }
+
+// __kernel void reduceKernel (
+// 		__global float * restrict out,
+// 		__global const TrackData * restrict J,
+// 		const uint2 JSize,
+// 		const uint2 size,
+// 		__local float * S
+// ) {
+
+// 	uint blockIdx = get_group_id(0);
+// 	uint blockDim = get_local_size(0);
+// 	uint threadIdx = get_local_id(0);
+// 	uint gridDim = get_num_groups(0);
+
+// 	const uint sline = threadIdx;
+
+// 	float sums[32];
+// 	float * jtj = sums + 7;
+// 	float * info = sums + 28;
+
+// 	for(uint i = 0; i < 32; ++i)
+// 	sums[i] = 0.0f;
+
+// 	for(uint y = blockIdx; y < size.y; y += gridDim) {
+// 		for(uint x = sline; x < size.x; x += blockDim ) {
+// 			const TrackData row = J[x + y * JSize.x];
+// 			if(row.result < 1) {
+// 				info[1] += row.result == -4 ? 1 : 0;
+// 				info[2] += row.result == -5 ? 1 : 0;
+// 				info[3] += row.result > -4 ? 1 : 0;
+// 				continue;
+// 			}
+
+// 			// Error part
+// 			sums[0] += row.error * row.error;
+
+// 			// JTe part
+// 			for(int i = 0; i < 6; ++i)
+// 			sums[i+1] += row.error * row.J[i];
+
+// 			jtj[0] += row.J[0] * row.J[0];
+// 			jtj[1] += row.J[0] * row.J[1];
+// 			jtj[2] += row.J[0] * row.J[2];
+// 			jtj[3] += row.J[0] * row.J[3];
+// 			jtj[4] += row.J[0] * row.J[4];
+// 			jtj[5] += row.J[0] * row.J[5];
+
+// 			jtj[6] += row.J[1] * row.J[1];
+// 			jtj[7] += row.J[1] * row.J[2];
+// 			jtj[8] += row.J[1] * row.J[3];
+// 			jtj[9] += row.J[1] * row.J[4];
+// 			jtj[10] += row.J[1] * row.J[5];
+
+// 			jtj[11] += row.J[2] * row.J[2];
+// 			jtj[12] += row.J[2] * row.J[3];
+// 			jtj[13] += row.J[2] * row.J[4];
+// 			jtj[14] += row.J[2] * row.J[5];
+
+// 			jtj[15] += row.J[3] * row.J[3];
+// 			jtj[16] += row.J[3] * row.J[4];
+// 			jtj[17] += row.J[3] * row.J[5];
+
+// 			jtj[18] += row.J[4] * row.J[4];
+// 			jtj[19] += row.J[4] * row.J[5];
+
+// 			jtj[20] += row.J[5] * row.J[5];
+// 			// extra info here
+// 			info[0] += 1;
+// 		}
+// 	}
+
+// 	for(int i = 0; i < 32; ++i) // copy over to shared memory
+// 	S[sline * 32 + i] = sums[i];
+
+// 	barrier(CLK_LOCAL_MEM_FENCE);
+
+// 	if(sline < 32) { // sum up columns and copy to global memory in the final 32 threads
+// 		for(unsigned i = 1; i < blockDim; ++i)
+// 		S[sline] += S[i * 32 + sline];
+// 		out[sline+blockIdx*32] = S[sline];
+// 	}
+// }
+
+// __kernel void depth2vertexKernel( __global float * restrict vertex, // float3
+// 		const uint2 vertexSize ,
+// 		const __global float * restrict depth,
+// 		const uint2 depthSize ,
+// 		const float4 invK0,
+// 		const float4 invK1,
+// 		const float4 invK2,
+// 		const float4 invK3) {
+
+// 	Matrix4 invK;
+// 	invK.data[0] = invK0;
+// 	invK.data[1] = invK1;
+// 	invK.data[2] = invK2;
+// 	invK.data[3] = invK3;
+
+// 	uint2 pixel = (uint2) (get_global_id(0),get_global_id(1));
+// 	float3 vert = (float3)(get_global_id(0),get_global_id(1),1.0f);
+
+// 	if(pixel.x >= depthSize.x || pixel.y >= depthSize.y ) {
+// 		return;
+// 	}
+
+// 	float3 res = (float3) (0);
+
+// 	if(depth[pixel.x + depthSize.x * pixel.y] > 0) {
+// 		res = depth[pixel.x + depthSize.x * pixel.y] * (myrotate(invK, (float3)(pixel.x, pixel.y, 1.f)));
+// 	}
+
+// 	vstore3(res, pixel.x + vertexSize.x * pixel.y,vertex); 	// vertex[pixel] =
+
+// }
+
+// __kernel void vertex2normalKernel( __global float * restrict normal,    // float3
+// 		const uint2 normalSize,
+// 		const __global float * restrict vertex ,
+// 		const uint2 vertexSize ) {  // float3
+
+// 	uint2 pixel = (uint2) (get_global_id(0),get_global_id(1));
+
+// 	if(pixel.x >= vertexSize.x || pixel.y >= vertexSize.y )
+// 	return;
+
+// 	//const float3 left = vertex[(uint2)(max(int(pixel.x)-1,0), pixel.y)];
+// 	//const float3 right = vertex[(uint2)(min(pixel.x+1,vertex.size.x-1), pixel.y)];
+// 	//const float3 up = vertex[(uint2)(pixel.x, max(int(pixel.y)-1,0))];
+// 	//const float3 down = vertex[(uint2)(pixel.x, min(pixel.y+1,vertex.size.y-1))];
+
+// 	uint2 vleft = (uint2)(max((int)(pixel.x)-1,0), pixel.y);
+// 	uint2 vright = (uint2)(min(pixel.x+1,vertexSize.x-1), pixel.y);
+// 	uint2 vup = (uint2)(pixel.x, max((int)(pixel.y)-1,0));
+// 	uint2 vdown = (uint2)(pixel.x, min(pixel.y+1,vertexSize.y-1));
+
+// 	const float3 left = vload3(vleft.x + vertexSize.x * vleft.y,vertex);
+// 	const float3 right = vload3(vright.x + vertexSize.x * vright.y,vertex);
+// 	const float3 up = vload3(vup.x + vertexSize.x * vup.y,vertex);
+// 	const float3 down = vload3(vdown.x + vertexSize.x * vdown.y,vertex);
+// 	/*
+// 	 unsigned long int val =  0 ;
+// 	 val = max(((int) pixel.x)-1,0) + vertexSize.x * pixel.y;
+// 	 const float3 left   = vload3(   val,vertex);
+
+// 	 val =  min(pixel.x+1,vertexSize.x-1)                  + vertexSize.x *     pixel.y;
+// 	 const float3 right  = vload3(    val     ,vertex);
+// 	 val =   pixel.x                        + vertexSize.x *     max(((int) pixel.y)-1,0)  ;
+// 	 const float3 up     = vload3(  val ,vertex);
+// 	 val =  pixel.x                       + vertexSize.x *   min(pixel.y+1,vertexSize.y-1)   ;
+// 	 const float3 down   = vload3(  val   ,vertex);
+// 	 */
+// 	if(left.z == 0 || right.z == 0|| up.z ==0 || down.z == 0) {
+// 		//float3 n = vload3(pixel.x + normalSize.x * pixel.y,normal);
+// 		//n.x=INVALID;
+// 		vstore3((float3)(INVALID,INVALID,INVALID),pixel.x + normalSize.x * pixel.y,normal);
+// 		return;
+// 	}
+// 	const float3 dxv = right - left;
+// 	const float3 dyv = down - up;
+// 	vstore3((float3) normalize(cross(dyv, dxv)), pixel.x + pixel.y * normalSize.x, normal );
+
+// }
+
+// __kernel void mm2metersKernel(
+// 		__global float * restrict depth,
+// 		const uint2 depthSize ,
+// 		const __global ushort * restrict in ,
+// 		const uint2 inSize ,
+// 		const int ratio ) {
+// 	uint2 pixel = (uint2) (get_global_id(0),get_global_id(1));
+// 	depth[pixel.x + depthSize.x * pixel.y] = in[pixel.x * ratio + inSize.x * pixel.y * ratio] / 1000.0f;
+// }
+
+// __kernel void initVolumeKernel(__global short2 * data) {
+
+// 	uint x = get_global_id(0);
+// 	uint y = get_global_id(1);
+// 	uint z = get_global_id(2);
+// 	uint3 size = (uint3) (get_global_size(0), get_global_size(1), get_global_size(2));
+// 	float2 d = (float2) (1.0f, 0.0f);
+
+// 	data[x + y * size.x + z * size.x * size.y] = (short2) (d.x * MULTIPLIER, d.y);
+
+// }
+
+// __kernel void halfSampleRobustImageKernel(__global float * restrict out,
+// 		__global const float * restrict in,
+// 		const uint2 inSize,
+// 		const float e_d,
+// 		const int r) {
+
+// 	uint2 pixel = (uint2) (get_global_id(0),get_global_id(1));
+// 	uint2 outSize = inSize / 2;
+
+// 	const uint2 centerPixel = 2 * pixel;
+
+// 	float sum = 0.0f;
+// 	float t = 0.0f;
+// 	const float center = in[centerPixel.x + centerPixel.y * inSize.x];
+// 	for(int i = -r + 1; i <= r; ++i) {
+// 		for(int j = -r + 1; j <= r; ++j) {
+// 			int2 from = (int2)(clamp((int2)(centerPixel.x + j, centerPixel.y + i), (int2)(0), (int2)(inSize.x - 1, inSize.y - 1)));
+// 			float current = in[from.x + from.y * inSize.x];
+// 			// Depth values are used in the average only if they are within 3*sigma_r of the central pixel to ensure smoothing does not occur over boundaries
+// 			if(fabs(current - center) < e_d) {
+// 				sum += 1.0f;
+// 				t += current;
+// 			}
+// 		}
+// 	}
+// 	out[pixel.x + pixel.y * outSize.x] = t / sum;
+
+// }

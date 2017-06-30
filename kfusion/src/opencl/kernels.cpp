@@ -169,8 +169,7 @@ void Kfusion::languageSpecificConstructor() {
 
 }
 Kfusion::~Kfusion() {
-	if (reduceOutputBuffer)
-		free(reduceOutputBuffer);
+	if (reduceOutputBuffer) free(reduceOutputBuffer);
 	reduceOutputBuffer = NULL;
 
 	for (unsigned int i = 0; i < iterations.size(); ++i) {
@@ -283,7 +282,6 @@ Kfusion::~Kfusion() {
 }
 
 bool updatePoseKernel(Matrix4 & pose, const float * output, float icp_threshold) {
-
 	// Update the pose regarding the tracking result
 	TooN::Matrix<8, 32, const float, TooN::Reference::RowMajor> values(output);
 	TooN::Vector<6> x = solve(values[0].slice<1, 27>());
@@ -296,7 +294,6 @@ bool updatePoseKernel(Matrix4 & pose, const float * output, float icp_threshold)
 }
 
 bool checkPoseKernel(Matrix4 & pose, Matrix4 oldPose, const float * output, uint2 imageSize, float track_threshold) {
-
 	// Check the tracking result, and go back to the previous camera position if necessary
 	if ((std::sqrt(output[0] / output[28]) > 2e-2) || (output[28] / (imageSize.x * imageSize.y) < track_threshold)) {
 		pose = oldPose;

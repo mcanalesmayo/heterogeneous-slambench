@@ -61,7 +61,7 @@ int opencl_init(void) {
     cl_uint num_devices;
 
     cl_platform_info platform_info;
-    char platform_name[30];
+    char platform_name[256];
     clError = clGetPlatformIDs(0, NULL, &num_platforms);
     if (clError != CL_SUCCESS) {
         printf("ERROR: clGetPlatformIDs(0,NULL,&num_platforms) failed\n");
@@ -81,7 +81,7 @@ int opencl_init(void) {
     }
 
     for(int i=0; i<num_platforms; i++){
-        clGetPlatformInfo(platform_ids[i], CL_PLATFORM_NAME, 30, platform_name, NULL);
+        clGetPlatformInfo(platform_ids[i], CL_PLATFORM_NAME, 256, platform_name, NULL);
         printf("Platform %d: %s\n", i, platform_name);
     }
 
@@ -94,7 +94,7 @@ int opencl_init(void) {
     // Specifies a list of context property names and their corresponding values. Each property name is immediately followed by the corresponding desired value.
     // The list is terminated with 0. properties can be NULL in which case the platform that is selected is implementation-defined.
     // The list of supported properties is described in the table below.
-    cl_context_properties ctxprop_fpga[] = { CL_CONTEXT_PLATFORM, (cl_context_properties) platform_ids[0], 0};
+    cl_context_properties ctxprop_fpga[] = {CL_CONTEXT_PLATFORM, (cl_context_properties) platform_ids[0], 0};
 
     contexts[0] = clCreateContextFromType(ctxprop_fpga, CL_DEVICE_TYPE_ACCELERATOR, NULL, NULL, NULL);
     if(!contexts[0]) {
@@ -148,7 +148,7 @@ int opencl_init(void) {
     /* ---- */
 
     // NVIDIA CUDA is idx=1
-    cl_context_properties ctxprop_gpu[] = { CL_CONTEXT_PLATFORM, (cl_context_properties) platform_ids[1], 0};
+    cl_context_properties ctxprop_gpu[] = {CL_CONTEXT_PLATFORM, (cl_context_properties) platform_ids[1], 0};
     contexts[1] = clCreateContextFromType(ctxprop_gpu, CL_DEVICE_TYPE_GPU, NULL, NULL, NULL);
     if( !contexts[1] ) {
         printf("ERROR: clCreateContextFromType(%s) failed\n", "GPU");
