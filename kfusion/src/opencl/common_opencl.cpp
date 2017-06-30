@@ -136,8 +136,8 @@ int opencl_init(void) {
     // create and build the FPGA program
     std::string binary_file = aocl_utils::getBoardBinaryFile(AOCX_PATH, device_lists[0][0]);
     printf("Using AOCX: %s\n", binary_file.c_str());
-    cl_program program_fpga = aocl_utils::createProgramFromBinary(contexts[0], binary_file.c_str(), device_lists[0], 1);
-    clError = clBuildProgram(program_fpga, 0, NULL, NULL, NULL, NULL);
+    programs[0] = aocl_utils::createProgramFromBinary(contexts[0], binary_file.c_str(), device_lists[0], 1);
+    clError = clBuildProgram(programs[0], 0, NULL, NULL, NULL, NULL);
     if (clError != CL_SUCCESS) {
         printf("ERROR: FPGA clBuildProgram() => %d\n", clError);
         return -1;
@@ -186,7 +186,7 @@ int opencl_init(void) {
         return -1;
     }
 
-    char const * tempchar = "./kernels.cl";
+    char const * tempchar = "/home/mcanales/slambench/kfusion/src/opencl/kernels.cl";
     FILE *fp = fopen(tempchar, "rb"); 
     if(!fp) {
         printf("ERROR: unable to open '%s'\n", tempchar);
@@ -199,12 +199,12 @@ int opencl_init(void) {
     const char *slist[2] = { source, 0 };
 
     // create and build the GPU program
-    cl_program program_gpus = clCreateProgramWithSource(contexts[1], 1, slist, NULL, &clError);
+    programs[1] = clCreateProgramWithSource(contexts[1], 1, slist, NULL, &clError);
     if(clError != CL_SUCCESS) {
         printf("ERROR: GPUs clCreateProgramWithSource() => %d\n", clError);
         return -1;
     }
-    clError = clBuildProgram(program_gpus, 0, NULL, NULL, NULL, NULL);
+    clError = clBuildProgram(programs[1], 0, NULL, NULL, NULL, NULL);
     if(clError != CL_SUCCESS) {
         printf("ERROR: GPUs clBuildProgram() => %d\n", clError);
         return -1;

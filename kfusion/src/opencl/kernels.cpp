@@ -137,7 +137,6 @@ void Kfusion::languageSpecificConstructor() {
 	checkErr(clError, "clSetKernelArg");
 
 	size_t globalWorksize[3] = { volumeResolution.x, volumeResolution.y, volumeResolution.z };
-
 	clError = clEnqueueNDRangeKernel(cmd_queues[1][0], initVolume_ocl_kernel, 3, NULL, globalWorksize, NULL, 0, NULL, NULL);
 	checkErr(clError, "clEnqueueNDRangeKernel");
 
