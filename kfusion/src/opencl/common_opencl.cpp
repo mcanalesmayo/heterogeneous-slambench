@@ -186,7 +186,7 @@ int opencl_init(void) {
         return -1;
     }
 
-    char const * tempchar = "/home/mcanales/slambench/kfusion/src/opencl/kernels.cl";
+    char const * tempchar = "/home/mcanales/Desktop/slambench/kfusion/src/opencl/kernels.cl";
     FILE *fp = fopen(tempchar, "rb"); 
     if(!fp) {
         printf("ERROR: unable to open '%s'\n", tempchar);

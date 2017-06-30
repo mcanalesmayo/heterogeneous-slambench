@@ -166,7 +166,7 @@ with open(filename, 'a') as f:
         if (framesDropped == 0) and (str(variable) == "ATE_wrt_kfusion"):
             continue
     	
-        dataName = str(variable)
+        dataName = str(variable).strip()
         dataMin = min(fulldata[variable])
         dataMax = max(fulldata[variable])
         dataMean = numpy.mean(fulldata[variable])
