@@ -111,7 +111,7 @@ Each application mode is also declined in 4 different builds/implementations:
 
 * C++ (*./build/kfusion/kfusion-main-cpp*) 
 * OpenMP (*./build/kfusion/kfusion-main-openmp*)
-* OpenCL (*./build/kfusion/kfusion-main-cpp*) 
+* OpenCL (*./build/kfusion/kfusion-main-opencl*) 
 * CUDA (*./build/kfusion/kfusion-main-cuda*) 
 
 The Makefile will automatically build the executable with satisfied dependencies, e.g. the OpenCL application version will be built only if the OpenCL tool kit is available on the system and so on for CUDA, OpenMP and Qt.
