@@ -20,14 +20,15 @@
 
 #include <commons.h>
 
-// OPEN CL STUFF
-extern cl_int clError;
-extern cl_platform_id platform_id;
-extern cl_event event;
-extern cl_device_id device_id;
-extern cl_context context;
-extern cl_program program;
-extern cl_command_queue commandQueue;
+extern cl_int             clError;
+extern cl_uint            num_platforms;
+// first index corresponds to the platform
+extern cl_platform_id    *platform_ids;
+extern cl_context        *contexts;
+extern cl_program        *programs;
+// second index corresponds to the device in that platform
+extern cl_device_id     **device_lists;
+extern cl_command_queue **cmd_queues;
 
 extern size_t _ls[2];
 
@@ -145,8 +146,8 @@ inline void checkErrX(cl_int err, const char * name) {
 	}
 }
 
-void opencl_init(void);
-void opencl_clean(void);
+int opencl_init(void);
+int opencl_clean(void);
 
 #define RELEASE_IN_BUFFER(name)  \
     clError = clReleaseMemObject(name##Buffer);\

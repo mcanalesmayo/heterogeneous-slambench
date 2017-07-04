@@ -52,8 +52,8 @@ add_version(${appname} openmp "-fopenmp" "-fopenmp")
  #  ----------------- OCL VERSION ----------------- 
  
 if (OPENCL_FOUND) 
-   include_directories(${OPENCL_INCLUDE_DIRS})
-    add_library(${appname}-opencl  src/opencl/kernels.cpp src/opencl/common_opencl.cpp)
+    include_directories(${OPENCL_INCLUDE_DIRS})
+    add_library(${appname}-opencl  src/opencl/kernels.cpp src/opencl/common_opencl.cpp ${AOCL_UTILS_SRCS})
     target_link_libraries(${appname}-opencl   ${common_libraries} ${OPENCL_LIBRARIES})	
     add_version(${appname} opencl "" "")
 endif(OPENCL_FOUND)

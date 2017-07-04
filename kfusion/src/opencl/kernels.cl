@@ -274,20 +274,18 @@ __kernel void renderNormalKernel( const __global uchar * restrict in,
 	const int sizex = get_global_size(0);
 
 	float3 n;
-	const uchar3 i = vload3(posx + sizex * posy,in);
+	const uchar3 i = vload3(posx + sizex * posy, in);
 
 	n.x = i.x;
 	n.y = i.y;
 	n.z = i.z;
 
 	if(n.x == -2) {
-		vstore3((float3) (0,0,0),posx + sizex * posy,out);
+		vstore3((float3) (0,0,0), posx + sizex * posy, out);
 	} else {
 		n = normalize(n);
-		vstore3((float3) (n.x*128 + 128,
-						n.y*128+128, n.z*128+128), posx + sizex * posy,out);
+		vstore3((float3) (n.x*128 + 128, n.y*128 + 128, n.z*128 + 128), posx + sizex * posy, out);
 	}
-
 }
 
 __kernel void renderDepthKernel( __global uchar4 * restrict out,
@@ -313,12 +311,12 @@ __kernel void renderDepthKernel( __global uchar4 * restrict out,
 			const float mid2 = 0.75f - (0.5f*fract);
 			switch (sextant)
 			{
-				case 0: vstore4((uchar4)(191, 255*mid1, 64, 0), posx + sizex * posy, (__global uchar*)out); break;
-				case 1: vstore4((uchar4)(255*mid2, 191, 64, 0),posx + sizex * posy ,(__global uchar*)out); break;
-				case 2: vstore4((uchar4)(64, 191, 255*mid1, 0),posx + sizex * posy ,(__global uchar*)out); break;
-				case 3: vstore4((uchar4)(64, 255*mid2, 191, 0),posx + sizex * posy ,(__global uchar*)out); break;
-				case 4: vstore4((uchar4)(255*mid1, 64, 191, 0),posx + sizex * posy ,(__global uchar*)out); break;
-				case 5: vstore4((uchar4)(191, 64, 255*mid2, 0),posx + sizex * posy ,(__global uchar*)out); break;
+				case 0: vstore4((uchar4)(191, 255*mid1, 64, 0), posx + sizex * posy, (__global uchar*) out); break;
+				case 1: vstore4((uchar4)(255*mid2, 191, 64, 0), posx + sizex * posy ,(__global uchar*) out); break;
+				case 2: vstore4((uchar4)(64, 191, 255*mid1, 0), posx + sizex * posy ,(__global uchar*) out); break;
+				case 3: vstore4((uchar4)(64, 255*mid2, 191, 0), posx + sizex * posy ,(__global uchar*) out); break;
+				case 4: vstore4((uchar4)(255*mid1, 64, 191, 0), posx + sizex * posy ,(__global uchar*) out); break;
+				case 5: vstore4((uchar4)(191, 64, 255*mid2, 0), posx + sizex * posy ,(__global uchar*) out); break;
 			}
 		}
 	}
