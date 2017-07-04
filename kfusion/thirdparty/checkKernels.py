@@ -15,7 +15,7 @@ import numpy
 import csv
 import os.path
 
-kernel_consistency = [
+KERNEL_CONSISTENCY = [
     ["mm2meters", "mm2metersKernel"],  
     ["bilateral_filter","bilateralFilterKernel"],
     ["halfSampleRobust","halfSampleRobustImageKernel"],
@@ -34,18 +34,14 @@ kernel_consistency = [
 ]
 
 def translateName(n) :
-    for variations in kernel_consistency :
-        if n in variations :
+    for variations in KERNEL_CONSISTENCY:
+        if n in variations:
             return variations[0]
     return n
 
+KERNEL_LOG_REGEX = "([^ ]+)\s([0-9.]+)"
 
-kernel_log_regex = "([^ ]+)\s([0-9.]+)"
-
-
-# open files
-
-if len(sys.argv) != 5 :
+if len(sys.argv) != 5:
     print "1st param: log file\n"
     print "2nd param: timestamp (as execution identifier)\n"
     print "3rd param: commit hash (as version identifier)\n"
@@ -53,20 +49,19 @@ if len(sys.argv) != 5 :
     exit (1)
 
 # open log file first
-print
 print "Kernel-level statistics. Times are in nanoseconds." 
 fileref = open(sys.argv[1], 'r')
-data    = fileref.read()
+data = fileref.read()
 fileref.close()
 lines = data.split("\n") # remove head + first line
 
 data = {}
 
-for line in lines :
-    matching = re.match(kernel_log_regex,line)
-    if matching :
+for line in lines:
+    matching = re.match(KERNEL_LOG_REGEX, line)
+    if matching:
         name = translateName(matching.group(1))
-        if not  name in data :
+        if not name in data:
             data[name] = []
         data[name].append(float(matching.group(2)))
 #    else :
@@ -77,7 +72,7 @@ timestamp = sys.argv[2].strip()
 commitHash = sys.argv[3].strip()
 filename = sys.argv[4].strip()
 file_exists = os.path.isfile(filename)
-csvHeader = ['Timestamp', 'Commit Hash', 'Name', 'Count', 'Min', 'Max', 'Mean', 'Total']
+csvHeader = ['Timestamp', 'CommitHash', 'Name', 'Count', 'Min', 'Max', 'Mean', 'Total']
 with open(filename, 'a') as f:
     writer = csv.writer(f, delimiter=',')
 
@@ -85,7 +80,7 @@ with open(filename, 'a') as f:
     if not file_exists:
         writer.writerow(csvHeader)
 
-    for variable in sorted(data.keys()) :
+    for variable in sorted(data.keys()):
         dataName = str(variable)
         dataCount = len(data[variable])
         dataMin = min(data[variable])
@@ -95,9 +90,9 @@ with open(filename, 'a') as f:
         csvRow = [timestamp, commitHash, dataName, dataCount, dataMin, dataMax, dataMean, dataTotal]
         writer.writerow(csvRow)
 
-        print "%20.20s"% dataName,
+        print "%20.20s" % dataName,
         print "\tCount : %d" % dataCount,
         print "\tMin   : %d" % dataMin,
-        print "\tMax   : %d"  % dataMax,
+        print "\tMax   : %d" % dataMax,
         print "\tMean  : %f" % dataMean,
         print "\tTotal : %d" % dataTotal
