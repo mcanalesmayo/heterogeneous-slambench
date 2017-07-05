@@ -62,8 +62,8 @@ livingRoom%.gt.freiburg :
 	./kfusion/thirdparty/checkKernels.py kernels.$@ ${TIMESTAMP} ${COMMIT_HASH} ${ROOT_DIR}/$@.kernels.csv >> resume.$@
 
 %.openmp.log  :  living_room_traj%_loop.raw livingRoom%.gt.freiburg
-	$(MAKE) -C build  $(MFLAGS) kfusion-benchmark-openmp
-	KERNEL_TIMINGS=1 ./build/kfusion/kfusion-benchmark-openmp $($(*F)) -i  living_room_traj$(*F)_loop.raw -o  benchmark.$@ 2> kernels.$@
+	$(MAKE) -C build $(MFLAGS) kfusion-benchmark-openmp
+	KERNEL_TIMINGS=1 OMP=1 ./build/kfusion/kfusion-benchmark-openmp $($(*F)) -i  living_room_traj$(*F)_loop.raw -o  benchmark.$@ 2> kernels.$@
 	./kfusion/thirdparty/checkPos.py benchmark.$@  livingRoom$(*F).gt.freiburg ${TIMESTAMP} ${COMMIT_HASH} ${ROOT_DIR}/$@.pos.csv > resume.$@
 	./kfusion/thirdparty/checkKernels.py kernels.$@ ${TIMESTAMP} ${COMMIT_HASH} ${ROOT_DIR}/$@.kernels.csv >> resume.$@
 

@@ -23,6 +23,10 @@
 #include <iomanip>
 #include <getopt.h>
 
+// OMP
+#include <thread>
+#include <omp.h>
+
 inline double tock() {
 	synchroniseDevices();
 #ifdef __APPLE__
@@ -56,6 +60,12 @@ int main(int argc, char ** argv) {
 	assert(config.integration_rate > 0);
 	assert(config.volume_size.x > 0);
 	assert(config.volume_resolution.x > 0);
+
+	if (getenv("OMP")){
+		// set OMP threads if running OMP version
+		unsigned int nThreads = std::thread::hardware_concurrency();
+		omp_set_num_threads(nThreads);	
+	}
 
 	if (config.log_file != "") {
 		logfilestream.open(config.log_file.c_str());
