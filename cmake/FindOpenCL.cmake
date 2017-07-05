@@ -127,19 +127,22 @@ IF(DEFINED ENV{ALTERAOCLSDKROOT})
     IF (NOT ${LINK_FLAG} STREQUAL ${BKP_FLAG})
       # trim flag
       STRING(REPLACE "\n" "" LINK_FLAG ${LINK_FLAG})
-      # find library
-      FIND_LIBRARY (OPENCL_LIBRARY_${LINK_FLAG}
-      NAMES ${LINK_FLAG}
-      PATHS ${AOCL_LINK_LIBRARIES_DIRS}
-      DOC "OpenCL library")
+      # skip libstdc++
+      IF (NOT ${LINK_FLAG} STREQUAL "stdc++")
+        # find library
+        FIND_LIBRARY (OPENCL_LIBRARY_${LINK_FLAG}
+        NAMES ${LINK_FLAG}
+        PATHS ${AOCL_LINK_LIBRARIES_DIRS}
+        DOC "OpenCL library")
 
-      # if library was not found then raise fatal error
-      IF (${OPENCL_LIBRARY_${LINK_FLAG}} STREQUAL "OPENCL_LIBRARY_${LINK_FLAG}-NOTFOUND")
-        MESSAGE (FATAL_ERROR "-- Library ${LINK_FLAG} not found")
-      ENDIF (${OPENCL_LIBRARY_${LINK_FLAG}} STREQUAL "OPENCL_LIBRARY_${LINK_FLAG}-NOTFOUND")
+        # if library was not found then raise fatal error
+        IF (${OPENCL_LIBRARY_${LINK_FLAG}} STREQUAL "OPENCL_LIBRARY_${LINK_FLAG}-NOTFOUND")
+          MESSAGE (FATAL_ERROR "-- Library ${LINK_FLAG} not found")
+        ENDIF (${OPENCL_LIBRARY_${LINK_FLAG}} STREQUAL "OPENCL_LIBRARY_${LINK_FLAG}-NOTFOUND")
 
-      # append to list of libraries
-      SET (OPENCL_LIBRARIES "${OPENCL_LIBRARIES} ${OPENCL_LIBRARY_${LINK_FLAG}}")
+        # append to list of libraries
+        SET (OPENCL_LIBRARIES "${OPENCL_LIBRARIES} ${OPENCL_LIBRARY_${LINK_FLAG}}")
+      ENDIF (NOT ${LINK_FLAG} STREQUAL "stdc++")
     # other flags
     ELSE (NOT ${LINK_FLAG} STREQUAL ${BKP_FLAG})
       # append to list of linker flags
