@@ -31,7 +31,9 @@ cl_mem ocl_output_render_bufferGPU = NULL; // Common buffer for rendering track,
 
 // intra-frame
 cl_mem ocl_reduce_output_buffer = NULL;
-cl_mem ocl_trackingResult = NULL;
+float * ocl_trackingResult;
+cl_mem ocl_trackingResultFPGA = NULL;
+cl_mem ocl_trackingResultGPU = NULL;
 cl_mem ocl_FloatDepthFPGA = NULL;
 cl_mem ocl_FloatDepthGPU = NULL;
 float * ocl_FloatDepth = NULL;
@@ -116,7 +118,9 @@ void Kfusion::languageSpecificConstructor() {
 	checkErr(clError, "clCreateBuffer");
 	ocl_normal = clCreateBuffer(contexts[1], CL_MEM_READ_WRITE, sizeof(float3) * computationSize.x * computationSize.y, NULL, &clError);
 	checkErr(clError, "clCreateBuffer");
-	ocl_trackingResult = clCreateBuffer(contexts[0], CL_MEM_READ_WRITE, sizeof(TrackData) * computationSize.x * computationSize.y, NULL, &clError);
+	ocl_trackingResultFPGA = clCreateBuffer(contexts[0], CL_MEM_READ_WRITE, sizeof(TrackData) * computationSize.x * computationSize.y, NULL, &clError);
+	checkErr(clError, "clCreateBuffer");
+	ocl_trackingResultGPU = clCreateBuffer(contexts[1], CL_MEM_READ_WRITE, sizeof(TrackData) * computationSize.x * computationSize.y, NULL, &clError);
 	checkErr(clError, "clCreateBuffer");
 
 	ocl_reduce_output_buffer = clCreateBuffer(contexts[1], CL_MEM_WRITE_ONLY, 32 * number_of_groups * sizeof(float), NULL, &clError);
@@ -175,7 +179,6 @@ void Kfusion::languageSpecificConstructor() {
 	checkErr(clError, "clCreateKernel");
 	renderTrack_ocl_kernel = clCreateKernel(programs[0], "renderTrackKernel", &clError);
 	checkErr(clError, "clCreateKernel");
-
 }
 Kfusion::~Kfusion() {
 	if (reduceOutputBuffer) free(reduceOutputBuffer);
@@ -238,10 +241,15 @@ Kfusion::~Kfusion() {
 	  	checkErr(clError, "clReleaseMem");
 		ocl_normal = NULL;
 	}
-	if (ocl_trackingResult) {
-	 	clError = clReleaseMemObject(ocl_trackingResult);
+	if (ocl_trackingResultFPGA) {
+	 	clError = clReleaseMemObject(ocl_trackingResultFPGA);
 		checkErr(clError, "clReleaseMem");
-		ocl_trackingResult = NULL;
+		ocl_trackingResultFPGA = NULL;
+	}
+	if (ocl_trackingResultGPU) {
+	 	clError = clReleaseMemObject(ocl_trackingResultGPU);
+		checkErr(clError, "clReleaseMem");
+		ocl_trackingResultGPU = NULL;
 	}
 	if (ocl_gaussian) {
 	 	clError = clReleaseMemObject(ocl_gaussian);
@@ -335,6 +343,8 @@ void Kfusion::reset() {
 }
 
 void Kfusion::renderVolume(uchar4 * out, uint2 outputSize, int frame, int rate, float4 k, float largestep) {
+	printf("rendervolume\n");
+
     if (frame % rate != 0) return;
     // Create render opencl buffer if needed
     if(outputImageSizeBkp.x < outputSize.x || outputImageSizeBkp.y < outputSize.y || ocl_output_render_bufferGPU == NULL) {
@@ -403,9 +413,13 @@ void Kfusion::renderVolume(uchar4 * out, uint2 outputSize, int frame, int rate, 
 
     clError = clEnqueueReadBuffer(cmd_queues[1][0], ocl_output_render_bufferGPU, CL_FALSE, 0, outputSize.x * outputSize.y * sizeof(uchar4), out, 0, NULL, NULL );  
     checkErr(clError, "clEnqueueReadBuffer");
+
+    printf("eof rendervolume\n");
 }
 
 void Kfusion::renderTrack(uchar4 * out, uint2 outputSize) {
+	printf("rendertrack\n");
+
     // Create render opencl buffer if needed
     if(outputImageSizeBkp.x < outputSize.x || outputImageSizeBkp.y < outputSize.y || ocl_output_render_bufferFPGA == NULL) 
     {
@@ -421,7 +435,7 @@ void Kfusion::renderTrack(uchar4 * out, uint2 outputSize) {
 
 	// set param and run kernel
 	clError = clSetKernelArg(renderTrack_ocl_kernel, 0, sizeof(cl_mem), &ocl_output_render_bufferFPGA);
-	clError &= clSetKernelArg(renderTrack_ocl_kernel, 1, sizeof(cl_mem), &ocl_trackingResult);
+	clError &= clSetKernelArg(renderTrack_ocl_kernel, 1, sizeof(cl_mem), &ocl_trackingResultFPGA);
 	checkErr(clError, "clSetKernelArg");
 
 	size_t globalWorksize[2] = { computationSize.x, computationSize.y };
@@ -432,6 +446,7 @@ void Kfusion::renderTrack(uchar4 * out, uint2 outputSize) {
     clError = clEnqueueReadBuffer(cmd_queues[0][0], ocl_output_render_bufferFPGA, CL_FALSE, 0, outputSize.x * outputSize.y * sizeof(uchar4), out, 0, NULL, NULL );
     checkErr(clError, "clEnqueueReadBuffer");
 
+    printf("eof rendertrack\n");
 }
 
 void Kfusion::renderDepth(uchar4 * out, uint2 outputSize) {
@@ -567,7 +582,7 @@ bool Kfusion::preprocessing(const uint16_t * inputDepth, const uint2 inSize) {
 
 	arg = 0;
 
-	clError = clSetKernelArg(bilateralFilter_ocl_kernel, arg++, sizeof(cl_mem), ocl_ScaledDepthFPGA);
+	clError = clSetKernelArg(bilateralFilter_ocl_kernel, arg++, sizeof(cl_mem), &ocl_ScaledDepthFPGA);
 	sprintf(errStr, "clSetKernelArg%d", arg);
 	checkErr(clError, errStr);
 	clError = clSetKernelArg(bilateralFilter_ocl_kernel, arg++, sizeof(cl_mem), &ocl_FloatDepthFPGA);
@@ -597,6 +612,8 @@ bool Kfusion::preprocessing(const uint16_t * inputDepth, const uint2 inSize) {
 
 }
 bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate, uint frame) {
+	printf("tracking\n");
+
 	if ((frame % tracking_rate) != 0)
 		return false;
 
@@ -710,7 +727,7 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate, uint f
 			int arg = 0;
 			char errStr[20];
 
-			clError = clSetKernelArg(track_ocl_kernel, arg++, sizeof(cl_mem), &ocl_trackingResult);
+			clError = clSetKernelArg(track_ocl_kernel, arg++, sizeof(cl_mem), &ocl_trackingResultGPU);
 			sprintf(errStr, "clSetKernelArg%d", arg);
 			checkErr(clError, errStr);
 			clError = clSetKernelArg(track_ocl_kernel, arg++, sizeof(cl_uint2), &computationSize);
@@ -780,7 +797,7 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate, uint f
 			clError = clSetKernelArg(reduce_ocl_kernel, arg++, sizeof(cl_mem), &ocl_reduce_output_buffer);
 			sprintf(errStr, "clSetKernelArg%d", arg);
 			checkErr(clError, errStr);
-			clError = clSetKernelArg(reduce_ocl_kernel, arg++, sizeof(cl_mem), &ocl_trackingResult);
+			clError = clSetKernelArg(reduce_ocl_kernel, arg++, sizeof(cl_mem), &ocl_trackingResultGPU);
 			sprintf(errStr, "clSetKernelArg%d", arg);
 			checkErr(clError, errStr);
 			clError = clSetKernelArg(reduce_ocl_kernel, arg++, sizeof(cl_uint2), &computationSize);
@@ -812,10 +829,21 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate, uint f
 		}
 	}
 
+	/* Transfer results from GPU (track) to FPGA (renderTrack) */
+	/* The host is an intermediary between the buffers of the devices */
+	clError = clEnqueueReadBuffer(cmd_queues[1][0], ocl_trackingResultGPU, CL_TRUE, 0, sizeof(TrackData) * computationSize.x * computationSize.y, ocl_trackingResult, 0, NULL, NULL);
+	checkErr(clError, "clEnqueueReadBuffer");
+	clError = clEnqueueWriteBuffer(cmd_queues[0][0], ocl_trackingResultFPGA, CL_TRUE, 0, sizeof(TrackData) * computationSize.x * computationSize.y, ocl_trackingResult, 0, NULL, NULL);
+	checkErr(clError, "clEnqueueReadBuffer");
+
+	printf("eof tracking\n");
+
 	return checkPoseKernel(pose, oldPose, reduceOutputBuffer, computationSize, track_threshold);
 }
 
 bool Kfusion::raycasting(float4 k, float mu, uint frame) {
+	printf("raycasting\n");
+
 	bool doRaycast = false;
 	float largestep = mu * 0.75f;
 
@@ -874,10 +902,13 @@ bool Kfusion::raycasting(float4 k, float mu, uint frame) {
 
 	}
 
+	printf("eof raycasting\n");
 	return doRaycast;
 }
 
 bool Kfusion::integration(float4 k, uint integration_rate, float mu, uint frame) {
+	printf("integration\n");
+
 	bool doIntegrate = checkPoseKernel(pose, oldPose, reduceOutputBuffer, computationSize, track_threshold);
 
 	if ((doIntegrate && ((frame % integration_rate) == 0)) || (frame <= 3)) {
@@ -955,6 +986,7 @@ bool Kfusion::integration(float4 k, uint integration_rate, float mu, uint frame)
 		doIntegrate = false;
 	}
 
+	printf("eof integration\n");
 	return doIntegrate;
 }
 

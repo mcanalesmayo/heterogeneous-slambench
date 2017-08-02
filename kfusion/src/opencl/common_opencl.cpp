@@ -17,7 +17,7 @@
 #define STR(x) XSTR(x)
 
 #ifndef AOCX_PATH
-#define AOCX_PATH "/home/mcanales/Desktop/slambench/kfusion/src/opencl/kernels_fpga"
+#define AOCX_PATH "/home/mcanales/Desktop/slambench/kfusion/src/opencl/kernels_fpga_14"
 #endif
 
 cl_int             clError;
@@ -62,6 +62,9 @@ int opencl_init(void) {
 
     cl_platform_info platform_info;
     char platform_name[256];
+
+    printf("Initializing OpenCL\n");
+
     clError = clGetPlatformIDs(0, NULL, &num_platforms);
     if (clError != CL_SUCCESS) {
         printf("ERROR: clGetPlatformIDs(0,NULL,&num_platforms) failed\n");
