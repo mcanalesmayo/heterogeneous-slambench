@@ -258,29 +258,29 @@ float4 raycast(const Volume v, const uint2 pos, const Matrix4 view,
 
 /************** KERNELS ***************/
 
-__kernel void renderNormalKernel( const __global uchar * in,
-		__global float * out ) {
+// __kernel void renderNormalKernel( const __global uchar * in,
+// 		__global float * out ) {
 
-	const int posx = get_global_id(0);
-	const int posy = get_global_id(1);
-	const int sizex = get_global_size(0);
+// 	const int posx = get_global_id(0);
+// 	const int posy = get_global_id(1);
+// 	const int sizex = get_global_size(0);
 
-	float3 n;
-	const uchar3 i = vload3(posx + sizex * posy,in);
+// 	float3 n;
+// 	const uchar3 i = vload3(posx + sizex * posy,in);
 
-	n.x = i.x;
-	n.y = i.y;
-	n.z = i.z;
+// 	n.x = i.x;
+// 	n.y = i.y;
+// 	n.z = i.z;
 
-	if(n.x == -2) {
-		vstore3((float3) (0,0,0),posx + sizex * posy,out);
-	} else {
-		n = normalize(n);
-		vstore3((float3) (n.x*128 + 128,
-						n.y*128+128, n.z*128+128), posx + sizex * posy,out);
-	}
+// 	if(n.x == -2) {
+// 		vstore3((float3) (0,0,0),posx + sizex * posy,out);
+// 	} else {
+// 		n = normalize(n);
+// 		vstore3((float3) (n.x*128 + 128,
+// 						n.y*128+128, n.z*128+128), posx + sizex * posy,out);
+// 	}
 
-}
+// }
 
 __kernel void renderDepthKernel( __global uchar4 * out,
 		__global float * depth,
@@ -372,78 +372,78 @@ __kernel void bilateralFilterKernel( __global float * out,
 
 }
 
-__kernel void renderVolumeKernel( __global uchar * render,
-		__global short2 * v_data,
-		const uint3 v_size,
-		const float3 v_dim,
-		const Matrix4 view,
-		const float nearPlane,
-		const float farPlane,
-		const float step,
-		const float largestep,
-		const float3 light,
-		const float3 ambient) {
+// __kernel void renderVolumeKernel( __global uchar * render,
+// 		__global short2 * v_data,
+// 		const uint3 v_size,
+// 		const float3 v_dim,
+// 		const Matrix4 view,
+// 		const float nearPlane,
+// 		const float farPlane,
+// 		const float step,
+// 		const float largestep,
+// 		const float3 light,
+// 		const float3 ambient) {
 
-	const Volume v = {v_size, v_dim,v_data};
+// 	const Volume v = {v_size, v_dim,v_data};
 
-	const uint2 pos = (uint2) (get_global_id(0),get_global_id(1));
-	const int sizex = get_global_size(0);
+// 	const uint2 pos = (uint2) (get_global_id(0),get_global_id(1));
+// 	const int sizex = get_global_size(0);
 
-	float4 hit = raycast( v, pos, view, nearPlane, farPlane,step, largestep);
+// 	float4 hit = raycast( v, pos, view, nearPlane, farPlane,step, largestep);
 
-	if(hit.w > 0) {
-		const float3 test = as_float3(hit);
-		float3 surfNorm = grad(test,v);
-		if(length(surfNorm) > 0) {
-			const float3 diff = normalize(light - test);
-			const float dir = fmax(dot(normalize(surfNorm), diff), 0.f);
-			const float3 col = clamp((float3)(dir) + ambient, 0.f, 1.f) * (float3) 255;
-			vstore4((uchar4)(col.x, col.y, col.z, 0), pos.x + sizex * pos.y, render); // The forth value in uchar4 is padding for memory alignement and so it is for following uchar4 
-		} else {
-			vstore4((uchar4)(0, 0, 0, 0), pos.x + sizex * pos.y, render);
-		}
-	} else {
-		vstore4((uchar4)(0, 0, 0, 0), pos.x + sizex * pos.y, render);
-	}
+// 	if(hit.w > 0) {
+// 		const float3 test = as_float3(hit);
+// 		float3 surfNorm = grad(test,v);
+// 		if(length(surfNorm) > 0) {
+// 			const float3 diff = normalize(light - test);
+// 			const float dir = fmax(dot(normalize(surfNorm), diff), 0.f);
+// 			const float3 col = clamp((float3)(dir) + ambient, 0.f, 1.f) * (float3) 255;
+// 			vstore4((uchar4)(col.x, col.y, col.z, 0), pos.x + sizex * pos.y, render); // The forth value in uchar4 is padding for memory alignement and so it is for following uchar4 
+// 		} else {
+// 			vstore4((uchar4)(0, 0, 0, 0), pos.x + sizex * pos.y, render);
+// 		}
+// 	} else {
+// 		vstore4((uchar4)(0, 0, 0, 0), pos.x + sizex * pos.y, render);
+// 	}
 
-}
+// }
 
 /************** KFUSION KERNELS ***************/
 
-__kernel void raycastKernel( __global float * pos3D,  //float3
-		__global float * normal,//float3
-		__global short2 * v_data,
-		const uint3 v_size,
-		const float3 v_dim,
-		const Matrix4 view,
-		const float nearPlane,
-		const float farPlane,
-		const float step,
-		const float largestep ) {
+// __kernel void raycastKernel( __global float * pos3D,  //float3
+// 		__global float * normal,//float3
+// 		__global short2 * v_data,
+// 		const uint3 v_size,
+// 		const float3 v_dim,
+// 		const Matrix4 view,
+// 		const float nearPlane,
+// 		const float farPlane,
+// 		const float step,
+// 		const float largestep ) {
 
-	const Volume volume = {v_size, v_dim,v_data};
+// 	const Volume volume = {v_size, v_dim,v_data};
 
-	const uint2 pos = (uint2) (get_global_id(0),get_global_id(1));
-	const int sizex = get_global_size(0);
+// 	const uint2 pos = (uint2) (get_global_id(0),get_global_id(1));
+// 	const int sizex = get_global_size(0);
 
-	const float4 hit = raycast( volume, pos, view, nearPlane, farPlane, step, largestep );
-	const float3 test = as_float3(hit);
+// 	const float4 hit = raycast( volume, pos, view, nearPlane, farPlane, step, largestep );
+// 	const float3 test = as_float3(hit);
 
-	if(hit.w > 0.0f ) {
-		vstore3(test,pos.x + sizex * pos.y,pos3D);
-		float3 surfNorm = grad(test,volume);
-		if(length(surfNorm) == 0) {
-			//float3 n =  (INVALID,0,0);//vload3(pos.x + sizex * pos.y,normal);
-			//n.x=INVALID;
-			vstore3((float3)(INVALID,INVALID,INVALID),pos.x + sizex * pos.y,normal);
-		} else {
-			vstore3(normalize(surfNorm),pos.x + sizex * pos.y,normal);
-		}
-	} else {
-		vstore3((float3)(0),pos.x + sizex * pos.y,pos3D);
-		vstore3((float3)(INVALID, INVALID, INVALID),pos.x + sizex * pos.y,normal);
-	}
-}
+// 	if(hit.w > 0.0f ) {
+// 		vstore3(test,pos.x + sizex * pos.y,pos3D);
+// 		float3 surfNorm = grad(test,volume);
+// 		if(length(surfNorm) == 0) {
+// 			//float3 n =  (INVALID,0,0);//vload3(pos.x + sizex * pos.y,normal);
+// 			//n.x=INVALID;
+// 			vstore3((float3)(INVALID,INVALID,INVALID),pos.x + sizex * pos.y,normal);
+// 		} else {
+// 			vstore3(normalize(surfNorm),pos.x + sizex * pos.y,normal);
+// 		}
+// 	} else {
+// 		vstore3((float3)(0),pos.x + sizex * pos.y,pos3D);
+// 		vstore3((float3)(INVALID, INVALID, INVALID),pos.x + sizex * pos.y,normal);
+// 	}
+// }
 
 __kernel void integrateKernel (
 		__global short2 * v_data,
@@ -451,13 +451,31 @@ __kernel void integrateKernel (
 		const float3 v_dim,
 		__global const float * depth,
 		const uint2 depthSize,
-		const Matrix4 invTrack,
-		const Matrix4 K,
+		const float4 invTrack0,
+		const float4 invTrack1,
+		const float4 invTrack2,
+		const float4 invTrack3,
+		const float4 K0,
+		const float4 K1,
+		const float4 K2,
+		const float4 K3,
 		const float mu,
-		const float maxweight ,
-		const float3 delta ,
+		const float maxweight,
+		const float3 delta,
 		const float3 cameraDelta
 ) {
+
+	Matrix4 invTrack;
+	invTrack.data[0] = invTrack0;
+	invTrack.data[1] = invTrack1;
+	invTrack.data[2] = invTrack2;
+	invTrack.data[3] = invTrack3;
+
+	Matrix4 K;
+	K.data[0] = K0;
+	K.data[1] = K1;
+	K.data[2] = K2;
+	K.data[3] = K3;
 
 	Volume vol; vol.data = v_data; vol.size = v_size; vol.dim = v_dim;
 
@@ -503,11 +521,29 @@ __kernel void trackKernel (
 		const uint2 refVertexSize,
 		__global const float * refNormal,// float3
 		const uint2 refNormalSize,
-		const Matrix4 Ttrack,
-		const Matrix4 view,
+		const float4 Ttrack0,
+		const float4 Ttrack1,
+		const float4 Ttrack2,
+		const float4 Ttrack3,
+		const float4 view0,
+		const float4 view1,
+		const float4 view2,
+		const float4 view3,
 		const float dist_threshold,
 		const float normal_threshold
 ) {
+
+	Matrix4 Ttrack;
+	Ttrack.data[0] = Ttrack0;
+	Ttrack.data[1] = Ttrack1;
+	Ttrack.data[2] = Ttrack2;
+	Ttrack.data[3] = Ttrack3;
+
+	Matrix4 view;
+	view.data[0] = view0;
+	view.data[1] = view1;
+	view.data[2] = view2;
+	view.data[3] = view3;
 
 	const uint2 pixel = (uint2)(get_global_id(0),get_global_id(1));
 
@@ -558,93 +594,102 @@ __kernel void trackKernel (
 
 }
 
-__kernel void reduceKernel (
-		__global float * out,
-		__global const TrackData * J,
-		const uint2 JSize,
-		const uint2 size,
-		__local float * S
-) {
+// __kernel void reduceKernel (
+// 		__global float * out,
+// 		__global const TrackData * J,
+// 		const uint2 JSize,
+// 		const uint2 size,
+// 		__local float * S
+// ) {
 
-	uint blockIdx = get_group_id(0);
-	uint blockDim = get_local_size(0);
-	uint threadIdx = get_local_id(0);
-	uint gridDim = get_num_groups(0);
+// 	uint blockIdx = get_group_id(0);
+// 	uint blockDim = get_local_size(0);
+// 	uint threadIdx = get_local_id(0);
+// 	uint gridDim = get_num_groups(0);
 
-	const uint sline = threadIdx;
+// 	const uint sline = threadIdx;
 
-	float sums[32];
-	float * jtj = sums + 7;
-	float * info = sums + 28;
+// 	float sums[32];
+// 	float * jtj = sums + 7;
+// 	float * info = sums + 28;
 
-	for(uint i = 0; i < 32; ++i)
-	sums[i] = 0.0f;
+// 	for(uint i = 0; i < 32; ++i)
+// 	sums[i] = 0.0f;
 
-	for(uint y = blockIdx; y < size.y; y += gridDim) {
-		for(uint x = sline; x < size.x; x += blockDim ) {
-			const TrackData row = J[x + y * JSize.x];
-			if(row.result < 1) {
-				info[1] += row.result == -4 ? 1 : 0;
-				info[2] += row.result == -5 ? 1 : 0;
-				info[3] += row.result > -4 ? 1 : 0;
-				continue;
-			}
+// 	for(uint y = blockIdx; y < size.y; y += gridDim) {
+// 		for(uint x = sline; x < size.x; x += blockDim ) {
+// 			const TrackData row = J[x + y * JSize.x];
+// 			if(row.result < 1) {
+// 				info[1] += row.result == -4 ? 1 : 0;
+// 				info[2] += row.result == -5 ? 1 : 0;
+// 				info[3] += row.result > -4 ? 1 : 0;
+// 				continue;
+// 			}
 
-			// Error part
-			sums[0] += row.error * row.error;
+// 			// Error part
+// 			sums[0] += row.error * row.error;
 
-			// JTe part
-			for(int i = 0; i < 6; ++i)
-			sums[i+1] += row.error * row.J[i];
+// 			// JTe part
+// 			for(int i = 0; i < 6; ++i)
+// 			sums[i+1] += row.error * row.J[i];
 
-			jtj[0] += row.J[0] * row.J[0];
-			jtj[1] += row.J[0] * row.J[1];
-			jtj[2] += row.J[0] * row.J[2];
-			jtj[3] += row.J[0] * row.J[3];
-			jtj[4] += row.J[0] * row.J[4];
-			jtj[5] += row.J[0] * row.J[5];
+// 			jtj[0] += row.J[0] * row.J[0];
+// 			jtj[1] += row.J[0] * row.J[1];
+// 			jtj[2] += row.J[0] * row.J[2];
+// 			jtj[3] += row.J[0] * row.J[3];
+// 			jtj[4] += row.J[0] * row.J[4];
+// 			jtj[5] += row.J[0] * row.J[5];
 
-			jtj[6] += row.J[1] * row.J[1];
-			jtj[7] += row.J[1] * row.J[2];
-			jtj[8] += row.J[1] * row.J[3];
-			jtj[9] += row.J[1] * row.J[4];
-			jtj[10] += row.J[1] * row.J[5];
+// 			jtj[6] += row.J[1] * row.J[1];
+// 			jtj[7] += row.J[1] * row.J[2];
+// 			jtj[8] += row.J[1] * row.J[3];
+// 			jtj[9] += row.J[1] * row.J[4];
+// 			jtj[10] += row.J[1] * row.J[5];
 
-			jtj[11] += row.J[2] * row.J[2];
-			jtj[12] += row.J[2] * row.J[3];
-			jtj[13] += row.J[2] * row.J[4];
-			jtj[14] += row.J[2] * row.J[5];
+// 			jtj[11] += row.J[2] * row.J[2];
+// 			jtj[12] += row.J[2] * row.J[3];
+// 			jtj[13] += row.J[2] * row.J[4];
+// 			jtj[14] += row.J[2] * row.J[5];
 
-			jtj[15] += row.J[3] * row.J[3];
-			jtj[16] += row.J[3] * row.J[4];
-			jtj[17] += row.J[3] * row.J[5];
+// 			jtj[15] += row.J[3] * row.J[3];
+// 			jtj[16] += row.J[3] * row.J[4];
+// 			jtj[17] += row.J[3] * row.J[5];
 
-			jtj[18] += row.J[4] * row.J[4];
-			jtj[19] += row.J[4] * row.J[5];
+// 			jtj[18] += row.J[4] * row.J[4];
+// 			jtj[19] += row.J[4] * row.J[5];
 
-			jtj[20] += row.J[5] * row.J[5];
-			// extra info here
-			info[0] += 1;
-		}
-	}
+// 			jtj[20] += row.J[5] * row.J[5];
+// 			// extra info here
+// 			info[0] += 1;
+// 		}
+// 	}
 
-	for(int i = 0; i < 32; ++i) // copy over to shared memory
-	S[sline * 32 + i] = sums[i];
+// 	for(int i = 0; i < 32; ++i) // copy over to shared memory
+// 	S[sline * 32 + i] = sums[i];
 
-	barrier(CLK_LOCAL_MEM_FENCE);
+// 	barrier(CLK_LOCAL_MEM_FENCE);
 
-	if(sline < 32) { // sum up columns and copy to global memory in the final 32 threads
-		for(unsigned i = 1; i < blockDim; ++i)
-		S[sline] += S[i * 32 + sline];
-		out[sline+blockIdx*32] = S[sline];
-	}
-}
+// 	if(sline < 32) { // sum up columns and copy to global memory in the final 32 threads
+// 		for(unsigned i = 1; i < blockDim; ++i)
+// 		S[sline] += S[i * 32 + sline];
+// 		out[sline+blockIdx*32] = S[sline];
+// 	}
+// }
 
 __kernel void depth2vertexKernel( __global float * vertex, // float3
 		const uint2 vertexSize ,
 		const __global float * depth,
 		const uint2 depthSize ,
-		const Matrix4 invK ) {
+		const float4 invK0,
+		const float4 invK1,
+		const float4 invK2,
+		const float4 invK3) {
+
+	Matrix4 invK;
+	invK.data[0] = invK0;
+	invK.data[1] = invK1;
+	invK.data[2] = invK2;
+	invK.data[3] = invK3;
 
 	uint2 pixel = (uint2) (get_global_id(0),get_global_id(1));
 	float3 vert = (float3)(get_global_id(0),get_global_id(1),1.0f);
