@@ -133,7 +133,6 @@ int main(int argc, char ** argv) {
 	logstream->setf(std::ios::fixed, std::ios::floatfield);
 
 	while (reader->readNextDepthFrame(inputDepth)) {
-
 		Matrix4 pose = kfusion.getPose();
 
 		float xt = pose.data[0].w - init_pose.x;
