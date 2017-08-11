@@ -338,16 +338,7 @@ void Kfusion::renderVolume(uchar4 * out, uint2 outputSize, int frame, int rate, 
 	clError = clSetKernelArg(renderVolume_ocl_kernel, arg++, sizeof(cl_float3), (void*) &volumeDimensions);
 	sprintf(errStr, "clSetKernelArg%d", arg);
 	checkErr(clError, errStr);
-	clError = clSetKernelArg(renderVolume_ocl_kernel, arg++, sizeof(cl_float4), (void*) &(view.data[0]));
-	sprintf(errStr, "clSetKernelArg%d", arg);
-	checkErr(clError, errStr);
-	clError = clSetKernelArg(renderVolume_ocl_kernel, arg++, sizeof(cl_float4), (void*) &(view.data[1]));
-	sprintf(errStr, "clSetKernelArg%d", arg);
-	checkErr(clError, errStr);
-	clError = clSetKernelArg(renderVolume_ocl_kernel, arg++, sizeof(cl_float4), (void*) &(view.data[2]));
-	sprintf(errStr, "clSetKernelArg%d", arg);
-	checkErr(clError, errStr);
-	clError = clSetKernelArg(renderVolume_ocl_kernel, arg++, sizeof(cl_float4), (void*) &(view.data[3]));
+	clError = clSetKernelArg(renderVolume_ocl_kernel, arg++, sizeof(Matrix4), (void*) &view);
 	sprintf(errStr, "clSetKernelArg%d", arg);
 	checkErr(clError, errStr);
 	clError = clSetKernelArg(renderVolume_ocl_kernel, arg++, sizeof(cl_float), (void*) &nearPlane);
@@ -475,7 +466,6 @@ void Kfusion::dumpVolume(const char* filename) {
 }
 
 bool Kfusion::preprocessing(const uint16_t * inputDepth, const uint2 inSize) {
-
 	// bilateral_filter(ScaledDepth[0], inputDepth, inputSize , gaussian, e_delta, radius);
 	uint2 outSize = computationSize;
 
@@ -608,7 +598,6 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate, uint f
 
 		int arg = 0;
 		char errStr[20];
-
 		clError = clSetKernelArg(depth2vertex_ocl_kernel, arg++, sizeof(cl_mem), &ocl_inputVertex[i]);
 		sprintf(errStr, "clSetKernelArg%d", arg);
 		checkErr(clError, errStr);
@@ -621,19 +610,9 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate, uint f
 		clError = clSetKernelArg(depth2vertex_ocl_kernel, arg++, sizeof(cl_uint2), &imageSize);
 		sprintf(errStr, "clSetKernelArg%d", arg);
 		checkErr(clError, errStr);
-		clError = clSetKernelArg(depth2vertex_ocl_kernel, arg++, sizeof(cl_float4), &(invK.data[0]));
+		clError = clSetKernelArg(depth2vertex_ocl_kernel, arg++, sizeof(Matrix4), &invK);
 		sprintf(errStr, "clSetKernelArg%d", arg);
 		checkErr(clError, errStr);
-		clError = clSetKernelArg(depth2vertex_ocl_kernel, arg++, sizeof(cl_float4), &(invK.data[1]));
-		sprintf(errStr, "clSetKernelArg%d", arg);
-		checkErr(clError, errStr);
-		clError = clSetKernelArg(depth2vertex_ocl_kernel, arg++, sizeof(cl_float4), &(invK.data[2]));
-		sprintf(errStr, "clSetKernelArg%d", arg);
-		checkErr(clError, errStr);
-		clError = clSetKernelArg(depth2vertex_ocl_kernel, arg++, sizeof(cl_float4), &(invK.data[3]));
-		sprintf(errStr, "clSetKernelArg%d", arg);
-		checkErr(clError, errStr);
-
 		size_t globalWorksize[2] = { imageSize.x, imageSize.y };
 
 		clError = clEnqueueNDRangeKernel(cmd_queues[1][0], depth2vertex_ocl_kernel, 2, NULL, globalWorksize, NULL, 0, NULL, NULL);
@@ -660,6 +639,7 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate, uint f
 
 		localimagesize = make_uint2(localimagesize.x / 2, localimagesize.y / 2);
 	}
+
 	oldPose = pose;
 	const Matrix4 projectReference = getCameraMatrix(k) * inverse(raycastPose);
 
@@ -699,28 +679,10 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate, uint f
 			clError = clSetKernelArg(track_ocl_kernel, arg++, sizeof(cl_uint2), &computationSize);
 			sprintf(errStr, "clSetKernelArg%d", arg);
 			checkErr(clError, errStr);
-			clError = clSetKernelArg(track_ocl_kernel, arg++, sizeof(cl_float4), &(pose.data[0]));
+			clError = clSetKernelArg(track_ocl_kernel, arg++, sizeof(Matrix4), &pose);
 			sprintf(errStr, "clSetKernelArg%d", arg);
 			checkErr(clError, errStr);
-			clError = clSetKernelArg(track_ocl_kernel, arg++, sizeof(cl_float4), &(pose.data[1]));
-			sprintf(errStr, "clSetKernelArg%d", arg);
-			checkErr(clError, errStr);
-			clError = clSetKernelArg(track_ocl_kernel, arg++, sizeof(cl_float4), &(pose.data[2]));
-			sprintf(errStr, "clSetKernelArg%d", arg);
-			checkErr(clError, errStr);
-			clError = clSetKernelArg(track_ocl_kernel, arg++, sizeof(cl_float4), &(pose.data[3]));
-			sprintf(errStr, "clSetKernelArg%d", arg);
-			checkErr(clError, errStr);
-			clError = clSetKernelArg(track_ocl_kernel, arg++, sizeof(cl_float4), &(projectReference.data[0]));
-			sprintf(errStr, "clSetKernelArg%d", arg);
-			checkErr(clError, errStr);
-			clError = clSetKernelArg(track_ocl_kernel, arg++, sizeof(cl_float4), &(projectReference.data[1]));
-			sprintf(errStr, "clSetKernelArg%d", arg);
-			checkErr(clError, errStr);
-			clError = clSetKernelArg(track_ocl_kernel, arg++, sizeof(cl_float4), &(projectReference.data[2]));
-			sprintf(errStr, "clSetKernelArg%d", arg);
-			checkErr(clError, errStr);
-			clError = clSetKernelArg(track_ocl_kernel, arg++, sizeof(cl_float4), &(projectReference.data[3]));
+			clError = clSetKernelArg(track_ocl_kernel, arg++, sizeof(Matrix4), &projectReference);
 			sprintf(errStr, "clSetKernelArg%d", arg);
 			checkErr(clError, errStr);
 			clError = clSetKernelArg(track_ocl_kernel, arg++, sizeof(cl_float), &dist_threshold);
@@ -801,16 +763,7 @@ bool Kfusion::raycasting(float4 k, float mu, uint frame) {
 		clError = clSetKernelArg(raycast_ocl_kernel, arg++, sizeof(cl_float3), (void*) &volumeDimensions);
 		sprintf(errStr, "clSetKernelArg%d", arg);
 		checkErr(clError, errStr);
-		clError = clSetKernelArg(raycast_ocl_kernel, arg++, sizeof(cl_float4), (void*) &(view.data[0]));
-		sprintf(errStr, "clSetKernelArg%d", arg);
-		checkErr(clError, errStr);
-		clError = clSetKernelArg(raycast_ocl_kernel, arg++, sizeof(cl_float4), (void*) &(view.data[1]));
-		sprintf(errStr, "clSetKernelArg%d", arg);
-		checkErr(clError, errStr);
-		clError = clSetKernelArg(raycast_ocl_kernel, arg++, sizeof(cl_float4), (void*) &(view.data[2]));
-		sprintf(errStr, "clSetKernelArg%d", arg);
-		checkErr(clError, errStr);
-		clError = clSetKernelArg(raycast_ocl_kernel, arg++, sizeof(cl_float4), (void*) &(view.data[3]));
+		clError = clSetKernelArg(raycast_ocl_kernel, arg++, sizeof(Matrix4), (void*) &view);
 		sprintf(errStr, "clSetKernelArg%d", arg);
 		checkErr(clError, errStr);
 		clError = clSetKernelArg(raycast_ocl_kernel, arg++, sizeof(cl_float), (void*) &nearPlane);
@@ -869,28 +822,10 @@ bool Kfusion::integration(float4 k, uint integration_rate, float mu, uint frame)
 		clError = clSetKernelArg(integrate_ocl_kernel, arg++, sizeof(cl_uint2), (void*) &depthSize);
 		sprintf(errStr, "clSetKernelArg%d", arg);
 		checkErr(clError, errStr);
-		clError = clSetKernelArg(integrate_ocl_kernel, arg++, sizeof(cl_float4), (void*) &(invTrack.data[0]));
+		clError = clSetKernelArg(integrate_ocl_kernel, arg++, sizeof(Matrix4), (void*) &invTrack);
 		sprintf(errStr, "clSetKernelArg%d", arg);
 		checkErr(clError, errStr);
-		clError = clSetKernelArg(integrate_ocl_kernel, arg++, sizeof(cl_float4), (void*) &(invTrack.data[1]));
-		sprintf(errStr, "clSetKernelArg%d", arg);
-		checkErr(clError, errStr);
-		clError = clSetKernelArg(integrate_ocl_kernel, arg++, sizeof(cl_float4), (void*) &(invTrack.data[2]));
-		sprintf(errStr, "clSetKernelArg%d", arg);
-		checkErr(clError, errStr);
-		clError = clSetKernelArg(integrate_ocl_kernel, arg++, sizeof(cl_float4), (void*) &(invTrack.data[3]));
-		sprintf(errStr, "clSetKernelArg%d", arg);
-		checkErr(clError, errStr);
-		clError = clSetKernelArg(integrate_ocl_kernel, arg++, sizeof(cl_float4), (void*) &K.data[0]);
-		sprintf(errStr, "clSetKernelArg%d", arg);
-		checkErr(clError, errStr);
-		clError = clSetKernelArg(integrate_ocl_kernel, arg++, sizeof(cl_float4), (void*) &K.data[1]);
-		sprintf(errStr, "clSetKernelArg%d", arg);
-		checkErr(clError, errStr);
-		clError = clSetKernelArg(integrate_ocl_kernel, arg++, sizeof(cl_float4), (void*) &K.data[2]);
-		sprintf(errStr, "clSetKernelArg%d", arg);
-		checkErr(clError, errStr);
-		clError = clSetKernelArg(integrate_ocl_kernel, arg++, sizeof(cl_float4), (void*) &K.data[3]);
+		clError = clSetKernelArg(integrate_ocl_kernel, arg++, sizeof(Matrix4), (void*) &K);
 		sprintf(errStr, "clSetKernelArg%d", arg);
 		checkErr(clError, errStr);
 		clError = clSetKernelArg(integrate_ocl_kernel, arg++, sizeof(cl_float), (void*) &mu);
