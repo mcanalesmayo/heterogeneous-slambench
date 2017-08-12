@@ -200,6 +200,8 @@ class RawDepthReader: public DepthReader {
 private:
 	FILE* _pFile;
 	uint2 _size;
+	uint2 _computationSize;
+	unsigned int _compute_size_ratio;
 	unsigned short int* UintdepthMap;
 
 public:
@@ -207,10 +209,14 @@ public:
 	  if (UintdepthMap) free(UintdepthMap);
 	  if (_pFile)       fclose(_pFile);
 	}
-	RawDepthReader(std::string filename, int fps, bool blocking_read) :
+	RawDepthReader(std::string filename, int fps, bool blocking_read, unsigned int compute_size_ratio) :
 			DepthReader(), _pFile(fopen(filename.c_str(), "rb")) {
 
 		size_t res = fread(&(_size), sizeof(_size), 1, _pFile);
+		_compute_size_ratio = compute_size_ratio;
+		_computationSize = make_uint2(
+			_size.x / _compute_size_ratio,
+			_size.y / _compute_size_ratio);
 		cameraOpen = false;
 		cameraActive = false;
 		if (res != 1) {
@@ -232,12 +238,12 @@ public:
 	}
 	inline bool readNextDepthFrame(uchar3* raw_rgb,
 			unsigned short int * depthMap) {
-
 		int total = 0;
 		int expected_size = 0;
 		unsigned int newImageSize[2];
 
 		get_next_frame();
+
 #ifdef LIGHT_RAW // This LightRaw mode is used to get smaller raw files
 		unsigned int size_of_frame = (sizeof(unsigned int) * 2 + _size.x * _size.y * sizeof(unsigned short int) );
 #else
@@ -299,11 +305,10 @@ public:
 	}
 
 	inline bool readNextDepthFrame(float * depthMap) {
-
 		bool res = readNextDepthFrame(NULL, UintdepthMap);
 
-		for (unsigned int i = 0; i < _size.x * _size.y; i++) {
-			depthMap[i] = (float) UintdepthMap[i] / 1000.0f;
+		for (unsigned int i = 0; i < _computationSize.x * _computationSize.y; i++) {
+			depthMap[i] = (float) UintdepthMap[i/_compute_size_ratio] / 1000.0f;
 		}
 		return res;
 	}

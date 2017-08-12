@@ -25,7 +25,7 @@ Matrix4 raycastPose;
 cl_mem ocl_vertex = NULL;
 cl_mem ocl_normal = NULL;
 cl_mem ocl_volume_data = NULL;
-cl_mem ocl_depth_buffer = NULL;
+//cl_mem ocl_depth_buffer = NULL;
 cl_mem ocl_output_render_buffer = NULL; // Common buffer for rendering track, depth and volume
 
 // intra-frame
@@ -231,11 +231,11 @@ Kfusion::~Kfusion() {
 		checkErr(clError, "clReleaseMem");
 		ocl_volume_data = NULL;
 	}
-	if (ocl_depth_buffer) {
-	 	clError = clReleaseMemObject(ocl_depth_buffer);
-		checkErr(clError, "clReleaseMem");
-		ocl_depth_buffer = NULL;
-	}
+	// if (ocl_depth_buffer) {
+	//  	clError = clReleaseMemObject(ocl_depth_buffer);
+	// 	checkErr(clError, "clReleaseMem");
+	// 	ocl_depth_buffer = NULL;
+	// }
 	if(ocl_output_render_buffer) {
 	    clError = clReleaseMemObject(ocl_output_render_buffer);
 	    checkErr(clError, "clReleaseMem");
@@ -465,7 +465,7 @@ void Kfusion::dumpVolume(const char* filename) {
 
 }
 
-bool Kfusion::preprocessing(const uint16_t * inputDepth, const uint2 inSize) {
+bool Kfusion::preprocessing(const float * inputDepth, const uint2 inSize) {
 	// bilateral_filter(ScaledDepth[0], inputDepth, inputSize , gaussian, e_delta, radius);
 	uint2 outSize = computationSize;
 
@@ -485,43 +485,46 @@ bool Kfusion::preprocessing(const uint16_t * inputDepth, const uint2 inSize) {
 
 	int ratio = inSize.x / outSize.x;
 
-	if (computationSizeBkp.x < inSize.x|| computationSizeBkp.y < inSize.y || ocl_depth_buffer == NULL) {
+	if (computationSizeBkp.x < inSize.x || computationSizeBkp.y < inSize.y /* || ocl_depth_buffer == NULL */) {
 		computationSizeBkp = make_uint2(inSize.x, inSize.y);
-		if (ocl_depth_buffer != NULL) {
-			clError = clReleaseMemObject(ocl_depth_buffer);
-			checkErr(clError, "clReleaseMemObject");
-		}
-		ocl_depth_buffer = clCreateBuffer(contexts[1], CL_MEM_READ_WRITE, inSize.x * inSize.y * sizeof(uint16_t), NULL, &clError);
-		checkErr(clError, "clCreateBuffer input");
+		// if (ocl_depth_buffer != NULL) {
+		// 	clError = clReleaseMemObject(ocl_depth_buffer);
+		// 	checkErr(clError, "clReleaseMemObject");
+		// }
+		// ocl_depth_buffer = clCreateBuffer(contexts[1], CL_MEM_READ_WRITE, inSize.x * inSize.y * sizeof(uint16_t), NULL, &clError);
+		// checkErr(clError, "clCreateBuffer input");
 	}
-	clError = clEnqueueWriteBuffer(cmd_queues[1][0], ocl_depth_buffer, CL_FALSE, 0, inSize.x * inSize.y * sizeof(uint16_t), inputDepth, 0, NULL, NULL);
-	checkErr(clError, "clEnqueueWriteBuffer");
+	// clError = clEnqueueWriteBuffer(cmd_queues[1][0], ocl_depth_buffer, CL_FALSE, 0, inSize.x * inSize.y * sizeof(uint16_t), inputDepth, 0, NULL, NULL);
+	// checkErr(clError, "clEnqueueWriteBuffer");
+    clError = clEnqueueWriteBuffer(cmd_queues[1][0], ocl_FloatDepth, CL_FALSE, 0, outSize.x * outSize.y * sizeof(uint16_t), inputDepth, 0, NULL, NULL);
+    checkErr(clError, "clEnqueueWriteBuffer");
+
 
 	int arg = 0;
 	char errStr[20];
 
-	clError = clSetKernelArg(mm2meters_ocl_kernel, arg++, sizeof(cl_mem), &ocl_FloatDepth);
-	sprintf(errStr, "clSetKernelArg%d", arg);
-	checkErr(clError, errStr);
-	clError = clSetKernelArg(mm2meters_ocl_kernel, arg++, sizeof(cl_uint2), &outSize);
-	sprintf(errStr, "clSetKernelArg%d", arg);
-	checkErr(clError, errStr);
-	clError = clSetKernelArg(mm2meters_ocl_kernel, arg++, sizeof(cl_mem), &ocl_depth_buffer);
-	sprintf(errStr, "clSetKernelArg%d", arg);
-	checkErr(clError, errStr);
-	clError = clSetKernelArg(mm2meters_ocl_kernel, arg++, sizeof(cl_uint2), &inSize);
-	sprintf(errStr, "clSetKernelArg%d", arg);
-	checkErr(clError, errStr);
-	clError = clSetKernelArg(mm2meters_ocl_kernel, arg++, sizeof(cl_int), &ratio);
-	sprintf(errStr, "clSetKernelArg%d", arg);
-	checkErr(clError, errStr);
+	// clError = clSetKernelArg(mm2meters_ocl_kernel, arg++, sizeof(cl_mem), &ocl_FloatDepth);
+	// sprintf(errStr, "clSetKernelArg%d", arg);
+	// checkErr(clError, errStr);
+	// clError = clSetKernelArg(mm2meters_ocl_kernel, arg++, sizeof(cl_uint2), &outSize);
+	// sprintf(errStr, "clSetKernelArg%d", arg);
+	// checkErr(clError, errStr);
+	// clError = clSetKernelArg(mm2meters_ocl_kernel, arg++, sizeof(cl_mem), &ocl_depth_buffer);
+	// sprintf(errStr, "clSetKernelArg%d", arg);
+	// checkErr(clError, errStr);
+	// clError = clSetKernelArg(mm2meters_ocl_kernel, arg++, sizeof(cl_uint2), &inSize);
+	// sprintf(errStr, "clSetKernelArg%d", arg);
+	// checkErr(clError, errStr);
+	// clError = clSetKernelArg(mm2meters_ocl_kernel, arg++, sizeof(cl_int), &ratio);
+	// sprintf(errStr, "clSetKernelArg%d", arg);
+	// checkErr(clError, errStr);
 
 	size_t globalWorksize[2] = { outSize.x, outSize.y };
 
-	clError = clEnqueueNDRangeKernel(cmd_queues[1][0], mm2meters_ocl_kernel, 2, NULL, globalWorksize, NULL, 0, NULL, NULL);
-	checkErr(clError, "clEnqueueNDRangeKernel");
+	// clError = clEnqueueNDRangeKernel(cmd_queues[1][0], mm2meters_ocl_kernel, 2, NULL, globalWorksize, NULL, 0, NULL, NULL);
+	// checkErr(clError, "clEnqueueNDRangeKernel");
 
-	arg = 0;
+	// arg = 0;
 
 	clError = clSetKernelArg(bilateralFilter_ocl_kernel, arg++, sizeof(cl_mem), &ocl_ScaledDepth[0]);
 	sprintf(errStr, "clSetKernelArg%d", arg);
@@ -852,7 +855,7 @@ bool Kfusion::integration(float4 k, uint integration_rate, float mu, uint frame)
 	return doIntegrate;
 }
 
-void Kfusion::computeFrame(const ushort * inputDepth, const uint2 inputSize, float4 k, uint integration_rate, uint tracking_rate, float icp_threshold, float mu, const uint frame) {
+void Kfusion::computeFrame(const float * inputDepth, const uint2 inputSize, float4 k, uint integration_rate, uint tracking_rate, float icp_threshold, float mu, const uint frame) {
 	preprocessing(inputDepth, inputSize);
 	_tracked = tracking(k, icp_threshold, tracking_rate, frame);
 	_integrated = integration(k, integration_rate, mu, frame);

@@ -83,7 +83,7 @@ int main(int argc, char ** argv) {
 
 	if (is_file(config.input_file)) {
 		reader = new RawDepthReader(config.input_file, config.fps,
-				config.blocking_read);
+				config.blocking_read, config.compute_size_ratio);
 
 	} else {
 		reader = new SceneDepthReader(config.input_file, config.fps,
@@ -103,6 +103,7 @@ int main(int argc, char ** argv) {
 	const uint2 computationSize = make_uint2(
 			inputSize.x / config.compute_size_ratio,
 			inputSize.y / config.compute_size_ratio);
+
 	float4 camera = reader->getK() / config.compute_size_ratio;
 
 	if (config.camera_overrided)
@@ -110,8 +111,8 @@ int main(int argc, char ** argv) {
 	//  =========  BASIC BUFFERS  (input / output )  =========
 
 	// Construction Scene reader and input buffer
-	uint16_t* inputDepth = (uint16_t*) malloc(
-			sizeof(uint16_t) * inputSize.x * inputSize.y);
+	float * inputDepth = (float *) malloc(
+			sizeof(float) * computationSize.x * computationSize.y);
 	uchar4* depthRender = (uchar4*) malloc(
 			sizeof(uchar4) * computationSize.x * computationSize.y);
 	uchar4* trackRender = (uchar4*) malloc(
@@ -132,7 +133,11 @@ int main(int argc, char ** argv) {
 			<< std::endl;
 	logstream->setf(std::ios::fixed, std::ios::floatfield);
 
+	// unsigned int idx = 0;
 	while (reader->readNextDepthFrame(inputDepth)) {
+		// printf("inputDepth[%d]: %hu\n", idx, inputDepth[idx]);
+		// idx++;
+
 		Matrix4 pose = kfusion.getPose();
 
 		float xt = pose.data[0].w - init_pose.x;
