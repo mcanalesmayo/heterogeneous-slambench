@@ -308,17 +308,11 @@ public:
 
 		for (unsigned int i = 0; i < _computationSize.x; i++) {
 			for(unsigned int j = 0; j < _computationSize.y; j++){
-				depthMap[i + j*_computationSize.x] = (float) UintdepthMap[i*_compute_size_ratio + j*_size.x*_compute_size_ratio] / 1000.0f;
-				// if (j == 2 && i == 1){
-				// 	printf("reading from idx %d\n", i*_compute_size_ratio + j*_size.x*_compute_size_ratio);
-				// 	printf("writing to idx %d\n", i + j*_computationSize.x);
+				depthMap[i + j*_computationSize.x] = UintdepthMap[i*_compute_size_ratio + j*_size.x*_compute_size_ratio] / 1000.0f;
+				// if (i*_compute_size_ratio + j*_size.x*_compute_size_ratio == 30910){
+				// 	printf("reading from idx %d value %d, transforming to %5.5f\n", i*_compute_size_ratio + j*_size.x*_compute_size_ratio, UintdepthMap[i*_compute_size_ratio + j*_size.x*_compute_size_ratio], depthMap[i + j*_computationSize.x]);
 				// }
 			}
-			// if (i == _computationSize.x * _computationSize.y - 1){
-			// 	printf("actual size: %d\n", _size.x * _size.y);
-			// 	printf("needed size: %d\n", _computationSize.x * _computationSize.y);
-			// 	printf("last idx: %d\n", i*_compute_size_ratio);
-			// }
 		}
 		return res;
 	}

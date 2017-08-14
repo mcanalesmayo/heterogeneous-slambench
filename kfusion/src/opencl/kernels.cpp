@@ -487,44 +487,14 @@ bool Kfusion::preprocessing(const float * inputDepth, const uint2 inSize) {
 
 	if (computationSizeBkp.x < inSize.x || computationSizeBkp.y < inSize.y /* || ocl_depth_buffer == NULL */) {
 		computationSizeBkp = make_uint2(inSize.x, inSize.y);
-		// if (ocl_depth_buffer != NULL) {
-		// 	clError = clReleaseMemObject(ocl_depth_buffer);
-		// 	checkErr(clError, "clReleaseMemObject");
-		// }
-		// ocl_depth_buffer = clCreateBuffer(contexts[1], CL_MEM_READ_WRITE, inSize.x * inSize.y * sizeof(uint16_t), NULL, &clError);
-		// checkErr(clError, "clCreateBuffer input");
 	}
-	// clError = clEnqueueWriteBuffer(cmd_queues[1][0], ocl_depth_buffer, CL_FALSE, 0, inSize.x * inSize.y * sizeof(uint16_t), inputDepth, 0, NULL, NULL);
-	// checkErr(clError, "clEnqueueWriteBuffer");
-    clError = clEnqueueWriteBuffer(cmd_queues[1][0], ocl_FloatDepth, CL_FALSE, 0, outSize.x * outSize.y * sizeof(uint16_t), inputDepth, 0, NULL, NULL);
+    clError = clEnqueueWriteBuffer(cmd_queues[1][0], ocl_FloatDepth, CL_TRUE, 0, outSize.x * outSize.y * sizeof(float), inputDepth, 0, NULL, NULL);
     checkErr(clError, "clEnqueueWriteBuffer");
-
 
 	int arg = 0;
 	char errStr[20];
 
-	// clError = clSetKernelArg(mm2meters_ocl_kernel, arg++, sizeof(cl_mem), &ocl_FloatDepth);
-	// sprintf(errStr, "clSetKernelArg%d", arg);
-	// checkErr(clError, errStr);
-	// clError = clSetKernelArg(mm2meters_ocl_kernel, arg++, sizeof(cl_uint2), &outSize);
-	// sprintf(errStr, "clSetKernelArg%d", arg);
-	// checkErr(clError, errStr);
-	// clError = clSetKernelArg(mm2meters_ocl_kernel, arg++, sizeof(cl_mem), &ocl_depth_buffer);
-	// sprintf(errStr, "clSetKernelArg%d", arg);
-	// checkErr(clError, errStr);
-	// clError = clSetKernelArg(mm2meters_ocl_kernel, arg++, sizeof(cl_uint2), &inSize);
-	// sprintf(errStr, "clSetKernelArg%d", arg);
-	// checkErr(clError, errStr);
-	// clError = clSetKernelArg(mm2meters_ocl_kernel, arg++, sizeof(cl_int), &ratio);
-	// sprintf(errStr, "clSetKernelArg%d", arg);
-	// checkErr(clError, errStr);
-
 	size_t globalWorksize[2] = { outSize.x, outSize.y };
-
-	// clError = clEnqueueNDRangeKernel(cmd_queues[1][0], mm2meters_ocl_kernel, 2, NULL, globalWorksize, NULL, 0, NULL, NULL);
-	// checkErr(clError, "clEnqueueNDRangeKernel");
-
-	// arg = 0;
 
 	clError = clSetKernelArg(bilateralFilter_ocl_kernel, arg++, sizeof(cl_mem), &ocl_ScaledDepth[0]);
 	sprintf(errStr, "clSetKernelArg%d", arg);

@@ -711,15 +711,15 @@ __kernel void vertex2normalKernel( __global float * normal,    // float3
 
 }
 
-__kernel void mm2metersKernel(
-		__global float * depth,
-		const uint2 depthSize ,
-		const __global ushort * in ,
-		const uint2 inSize ,
-		const int ratio ) {
-	uint2 pixel = (uint2) (get_global_id(0),get_global_id(1));
-	depth[pixel.x + depthSize.x * pixel.y] = in[pixel.x * ratio + inSize.x * pixel.y * ratio] / 1000.0f;
-}
+// __kernel void mm2metersKernel(
+// 		__global float * depth,
+// 		const uint2 depthSize ,
+// 		const __global ushort * in ,
+// 		const uint2 inSize ,
+// 		const int ratio ) {
+// 	uint2 pixel = (uint2) (get_global_id(0),get_global_id(1));
+// 	depth[pixel.x + depthSize.x * pixel.y] = in[pixel.x * ratio + inSize.x * pixel.y * ratio] / 1000.0f;
+// }
 
 __kernel void initVolumeKernel(__global short2 * data) {
 
