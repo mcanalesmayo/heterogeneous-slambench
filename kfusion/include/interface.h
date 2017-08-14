@@ -230,7 +230,7 @@ public:
 			_blocking_read = blocking_read;
 			fseek(_pFile, 0, SEEK_SET);
 
-		UintdepthMap = (unsigned short int*) malloc(_size.x * _size.y * sizeof(unsigned short int));
+			UintdepthMap = (unsigned short int*) malloc(_size.x * _size.y * sizeof(unsigned short int));
 		}
 	};
 	ReaderType getType() {
@@ -243,7 +243,6 @@ public:
 		unsigned int newImageSize[2];
 
 		get_next_frame();
-
 #ifdef LIGHT_RAW // This LightRaw mode is used to get smaller raw files
 		unsigned int size_of_frame = (sizeof(unsigned int) * 2 + _size.x * _size.y * sizeof(unsigned short int) );
 #else
@@ -253,6 +252,7 @@ public:
 #endif
 		fseek(_pFile, size_of_frame * _frame, SEEK_SET);
 
+		// Depth values for each pixel
 		if (depthMap) {
 			total += fread(&(newImageSize), sizeof(newImageSize), 1, _pFile);
 			total += fread(depthMap, sizeof(unsigned short int),
@@ -268,13 +268,13 @@ public:
 		}
 
 #ifdef LIGHT_RAW // This LightRaw mode is used to get smaller raw files
-
 		if (raw_rgb) {
 			raw_rgb[0].x = 0;
 		} else {
 		}
 
 #else
+		// RGB values for each pixel
 		if (raw_rgb) {
 			total += fread(&(newImageSize), sizeof(newImageSize), 1, _pFile);
 			total += fread(raw_rgb, sizeof(uchar3),
@@ -288,7 +288,6 @@ public:
 			expected_size += 1 + newImageSize[0] * newImageSize[1];
 		}
 #endif
-
 		if (total != expected_size) {
 			std::cout << "End of file" << (total == 0 ? "" : "(garbage found)")
 					<< "." << std::endl;
@@ -307,8 +306,19 @@ public:
 	inline bool readNextDepthFrame(float * depthMap) {
 		bool res = readNextDepthFrame(NULL, UintdepthMap);
 
-		for (unsigned int i = 0; i < _computationSize.x * _computationSize.y; i++) {
-			depthMap[i] = (float) UintdepthMap[i/_compute_size_ratio] / 1000.0f;
+		for (unsigned int i = 0; i < _computationSize.x; i++) {
+			for(unsigned int j = 0; j < _computationSize.y; j++){
+				depthMap[i + j*_computationSize.x] = (float) UintdepthMap[i*_compute_size_ratio + j*_size.x*_compute_size_ratio] / 1000.0f;
+				// if (j == 2 && i == 1){
+				// 	printf("reading from idx %d\n", i*_compute_size_ratio + j*_size.x*_compute_size_ratio);
+				// 	printf("writing to idx %d\n", i + j*_computationSize.x);
+				// }
+			}
+			// if (i == _computationSize.x * _computationSize.y - 1){
+			// 	printf("actual size: %d\n", _size.x * _size.y);
+			// 	printf("needed size: %d\n", _computationSize.x * _computationSize.y);
+			// 	printf("last idx: %d\n", i*_compute_size_ratio);
+			// }
 		}
 		return res;
 	}
