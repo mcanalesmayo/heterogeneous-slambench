@@ -306,14 +306,24 @@ public:
 	inline bool readNextDepthFrame(float * depthMap) {
 		bool res = readNextDepthFrame(NULL, UintdepthMap);
 
-		for (unsigned int i = 0; i < _computationSize.x; i++) {
-			for(unsigned int j = 0; j < _computationSize.y; j++){
+		// double timeStart, timeEnd;
+		// struct timespec clockData;
+		// clock_gettime(CLOCK_MONOTONIC, &clockData);
+		// timeStart = (double) clockData.tv_sec * 1000000 + clockData.tv_nsec / 1000.0;
+
+		for(unsigned int j = 0; j < _computationSize.y; j++){
+			for (unsigned int i = 0; i < _computationSize.x; i++) {
 				depthMap[i + j*_computationSize.x] = UintdepthMap[i*_compute_size_ratio + j*_size.x*_compute_size_ratio] / 1000.0f;
 				// if (i*_compute_size_ratio + j*_size.x*_compute_size_ratio == 30910){
 				// 	printf("reading from idx %d value %d, transforming to %5.5f\n", i*_compute_size_ratio + j*_size.x*_compute_size_ratio, UintdepthMap[i*_compute_size_ratio + j*_size.x*_compute_size_ratio], depthMap[i + j*_computationSize.x]);
 				// }
 			}
 		}
+
+		// clock_gettime(CLOCK_MONOTONIC, &clockData);
+		// timeEnd = (double) clockData.tv_sec * 1000000 + clockData.tv_nsec / 1000.0;
+		// printf("read timing: %.f\n", timeEnd - timeStart);
+
 		return res;
 	}
 
