@@ -38,7 +38,6 @@ cl_mem * ocl_inputNormal = NULL;
 float * reduceOutputBuffer = NULL;
 
 // kernels
-cl_kernel mm2meters_ocl_kernel;
 cl_kernel bilateralFilter_ocl_kernel;
 cl_kernel halfSampleRobustImage_ocl_kernel;
 cl_kernel depth2vertex_ocl_kernel;
@@ -141,8 +140,6 @@ void Kfusion::languageSpecificConstructor() {
 	checkErr(clError, "clEnqueueNDRangeKernel");
 
 	//Kernels
-	mm2meters_ocl_kernel = clCreateKernel(programs[1], "mm2metersKernel", &clError);
-	checkErr(clError, "clCreateKernel");
 	bilateralFilter_ocl_kernel = clCreateKernel(programs[1], "bilateralFilterKernel", &clError);
 	checkErr(clError, "clCreateKernel");
 	halfSampleRobustImage_ocl_kernel = clCreateKernel(programs[1], "halfSampleRobustImageKernel", &clError);
@@ -246,7 +243,6 @@ Kfusion::~Kfusion() {
 		checkErr(clError, "clReleaseMem");
 		ocl_reduce_output_buffer = NULL;
 	}
-	RELEASE_KERNEL(mm2meters_ocl_kernel);
 	RELEASE_KERNEL(bilateralFilter_ocl_kernel);
 	RELEASE_KERNEL(halfSampleRobustImage_ocl_kernel);
 	RELEASE_KERNEL(depth2vertex_ocl_kernel);
@@ -260,7 +256,6 @@ Kfusion::~Kfusion() {
 	RELEASE_KERNEL(renderTrack_ocl_kernel);
 	RELEASE_KERNEL(initVolume_ocl_kernel);
 
-	mm2meters_ocl_kernel = NULL ;
 	bilateralFilter_ocl_kernel = NULL;
 	halfSampleRobustImage_ocl_kernel = NULL;
 	depth2vertex_ocl_kernel = NULL;
