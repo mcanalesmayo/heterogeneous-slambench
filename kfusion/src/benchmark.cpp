@@ -135,7 +135,6 @@ int main(int argc, char ** argv) {
 
 	// unsigned int idx = 0;
 	while (reader->readNextDepthFrame(inputDepth)) {
-		// printf("inputDepth[%d]: %hu\n", idx, inputDepth[idx]);
 		// idx++;
 
 		Matrix4 pose = kfusion.getPose();

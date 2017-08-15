@@ -200,23 +200,29 @@ class RawDepthReader: public DepthReader {
 private:
 	FILE* _pFile;
 	uint2 _size;
-	uint2 _computationSize;
-	unsigned int _compute_size_ratio;
-	unsigned short int* UintdepthMap;
+	uint2 computationSize;
+	unsigned int compute_size_ratio;
+	unsigned int size_of_frame;
 
 public:
 	~RawDepthReader() {
-	  if (UintdepthMap) free(UintdepthMap);
 	  if (_pFile)       fclose(_pFile);
 	}
-	RawDepthReader(std::string filename, int fps, bool blocking_read, unsigned int compute_size_ratio) :
+	RawDepthReader(std::string filename, int fps, bool blocking_read, unsigned int size_ratio) :
 			DepthReader(), _pFile(fopen(filename.c_str(), "rb")) {
 
 		size_t res = fread(&(_size), sizeof(_size), 1, _pFile);
-		_compute_size_ratio = compute_size_ratio;
-		_computationSize = make_uint2(
-			_size.x / _compute_size_ratio,
-			_size.y / _compute_size_ratio);
+		compute_size_ratio = size_ratio;
+		computationSize = make_uint2(
+			_size.x / compute_size_ratio,
+			_size.y / compute_size_ratio);
+	#ifdef LIGHT_RAW // This LightRaw mode is used to get smaller raw files
+		size_of_frame = (sizeof(unsigned int) * 2 + _size.x * _size.y * sizeof(unsigned short int) );
+	#else
+		size_of_frame = (sizeof(unsigned int) * 4
+			+ _size.x * _size.y * sizeof(unsigned short int)
+			+ _size.x * _size.y * sizeof(uchar3));
+	#endif
 		cameraOpen = false;
 		cameraActive = false;
 		if (res != 1) {
@@ -229,8 +235,6 @@ public:
 			_fps = fps;
 			_blocking_read = blocking_read;
 			fseek(_pFile, 0, SEEK_SET);
-
-			UintdepthMap = (unsigned short int*) malloc(_size.x * _size.y * sizeof(unsigned short int));
 		}
 	};
 	ReaderType getType() {
@@ -243,21 +247,27 @@ public:
 		unsigned int newImageSize[2];
 
 		get_next_frame();
-#ifdef LIGHT_RAW // This LightRaw mode is used to get smaller raw files
-		unsigned int size_of_frame = (sizeof(unsigned int) * 2 + _size.x * _size.y * sizeof(unsigned short int) );
-#else
-		unsigned int size_of_frame = (sizeof(unsigned int) * 4
-				+ _size.x * _size.y * sizeof(unsigned short int)
-				+ _size.x * _size.y * sizeof(uchar3));
-#endif
 		fseek(_pFile, size_of_frame * _frame, SEEK_SET);
 
 		// Depth values for each pixel
 		if (depthMap) {
 			total += fread(&(newImageSize), sizeof(newImageSize), 1, _pFile);
-			total += fread(depthMap, sizeof(unsigned short int),
-					newImageSize[0] * newImageSize[1], _pFile);
-			expected_size += 1 + newImageSize[0] * newImageSize[1];
+			if (compute_size_ratio == 1){
+				total += fread(depthMap, sizeof(unsigned short int),
+						newImageSize[0] * newImageSize[1], _pFile);
+				expected_size += 1 + newImageSize[0] * newImageSize[1];
+			}
+			else{
+				for(unsigned int j = 0; j < computationSize.y; j++){
+					for (unsigned int i = 0; i < computationSize.x; i++) {
+						// skip unneeded frames
+						fseek(_pFile, sizeof(unsigned short int) * (compute_size_ratio - 1), SEEK_CUR);
+						// read frame
+						total += fread(&(depthMap[i + j*computationSize.x]), sizeof(unsigned short int), 1, _pFile);
+					}
+				}
+				expected_size += 1 + computationSize.x * computationSize.y;
+			}
 		} else {
 			total += fread(&(newImageSize), sizeof(newImageSize), 1, _pFile);
 			total += newImageSize[0] * newImageSize[1];
@@ -304,27 +314,50 @@ public:
 	}
 
 	inline bool readNextDepthFrame(float * depthMap) {
-		bool res = readNextDepthFrame(NULL, UintdepthMap);
+		int total = 0;
+		int expected_size = 0;
+		unsigned int newImageSize[2];
+		unsigned short int aux;
 
-		// double timeStart, timeEnd;
-		// struct timespec clockData;
-		// clock_gettime(CLOCK_MONOTONIC, &clockData);
-		// timeStart = (double) clockData.tv_sec * 1000000 + clockData.tv_nsec / 1000.0;
+		get_next_frame();
+		fseek(_pFile, size_of_frame * _frame, SEEK_SET);
 
-		for(unsigned int j = 0; j < _computationSize.y; j++){
-			for (unsigned int i = 0; i < _computationSize.x; i++) {
-				depthMap[i + j*_computationSize.x] = UintdepthMap[i*_compute_size_ratio + j*_size.x*_compute_size_ratio] / 1000.0f;
-				// if (i*_compute_size_ratio + j*_size.x*_compute_size_ratio == 30910){
-				// 	printf("reading from idx %d value %d, transforming to %5.5f\n", i*_compute_size_ratio + j*_size.x*_compute_size_ratio, UintdepthMap[i*_compute_size_ratio + j*_size.x*_compute_size_ratio], depthMap[i + j*_computationSize.x]);
-				// }
+		// Depth values for each pixel
+		total += fread(&(newImageSize), sizeof(newImageSize), 1, _pFile);
+		if (compute_size_ratio == 1){
+			total += fread(depthMap, sizeof(unsigned short int),
+					newImageSize[0] * newImageSize[1], _pFile);
+			expected_size += 1 + newImageSize[0] * newImageSize[1];
+		}
+		else{
+			for(unsigned int j = 0; j < computationSize.y; j++){
+				for (unsigned int i = 0; i < computationSize.x; i++) {
+					// skip unneeded frames
+					fseek(_pFile, sizeof(unsigned short int) * (compute_size_ratio - 1), SEEK_CUR);
+					// read frame
+					total += fread(&aux, sizeof(unsigned short int), 1, _pFile);
+					// millimeters to meters
+					depthMap[i + j*computationSize.x] = (float) aux / 1000.0f;
+				}
 			}
+			expected_size += 1 + computationSize.x * computationSize.y;
 		}
 
-		// clock_gettime(CLOCK_MONOTONIC, &clockData);
-		// timeEnd = (double) clockData.tv_sec * 1000000 + clockData.tv_nsec / 1000.0;
-		// printf("read timing: %.f\n", timeEnd - timeStart);
+		// RGB values for each pixel
+		total += fread(&(newImageSize), sizeof(newImageSize), 1, _pFile);
+		// skip RGB values
+		total += newImageSize[0] * newImageSize[1];
+		fseek(_pFile, newImageSize[0] * newImageSize[1] * sizeof(uchar3),
+				SEEK_CUR);
+		expected_size += 1 + newImageSize[0] * newImageSize[1];
 
-		return res;
+		if (total != expected_size) {
+			std::cout << "End of file" << (total == 0 ? "" : "(garbage found)")
+					<< "." << std::endl;
+			return false;
+		} else {
+			return true;
+		}
 	}
 
 	inline uint2 getinputSize() {
