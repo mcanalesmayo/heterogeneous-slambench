@@ -466,7 +466,6 @@ void Kfusion::renderTrack(uchar4 * out, uint2 outputSize) {
 
     clError = clEnqueueReadBuffer(cmd_queues[0][0], ocl_output_render_bufferFPGA, CL_FALSE, 0, outputSize.x * outputSize.y * sizeof(uchar4), out, 0, NULL, NULL );  
     checkErr(clError, "clEnqueueReadBuffer");
-
 }
 
 void Kfusion::renderDepth(uchar4 * out, uint2 outputSize) {
@@ -498,7 +497,6 @@ void Kfusion::renderDepth(uchar4 * out, uint2 outputSize) {
 
     clError = clEnqueueReadBuffer(cmd_queues[0][0], ocl_output_render_bufferFPGA, CL_FALSE, 0, outputSize.x * outputSize.y * sizeof(uchar4), out, 0, NULL, NULL );  
     checkErr( clError, "clEnqueueReadBuffer");
-
 }
 
 void Kfusion::dumpVolume(const char* filename) {
@@ -537,7 +535,6 @@ void Kfusion::dumpVolume(const char* filename) {
 }
 
 bool Kfusion::preprocessing(const uint16_t * inputDepth, const uint2 inSize) {
-
 	// bilateral_filter(ScaledDepth[0], inputDepth, inputSize , gaussian, e_delta, radius);
 	uint2 outSize = computationSize;
 
@@ -1014,5 +1011,5 @@ void Kfusion::computeFrame(const ushort * inputDepth, const uint2 inputSize, flo
 void synchroniseDevices() {
 	clFinish(cmd_queues[0][0]);
 	clFinish(cmd_queues[1][0]);
-	clFinish(cmd_queues[1][1]);
+	//clFinish(cmd_queues[1][1]);
 }

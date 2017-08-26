@@ -11,13 +11,13 @@
 
 /************** TYPES ***************/
 
-#define INVALID -2 
+// #define INVALID -2 
 
-typedef struct sVolume {
-	uint3 size;
-	float3 dim;
-	__global short2 * data;
-} Volume;
+// typedef struct sVolume {
+// 	uint3 size;
+// 	float3 dim;
+// 	__global short2 * data;
+// } Volume;
 
 typedef struct sTrackData {
 	int result;
@@ -25,236 +25,236 @@ typedef struct sTrackData {
 	float J[6];
 } TrackData;
 
-typedef struct sMatrix4 {
-	float4 data[4];
-} Matrix4;
+// typedef struct sMatrix4 {
+// 	float4 data[4];
+// } Matrix4;
 
-/************** FUNCTIONS ***************/
+// /************** FUNCTIONS ***************/
 
-inline float sq(float r) {
-	return r * r;
-}
+// inline float sq(float r) {
+// 	return r * r;
+// }
 
-inline float3 Mat4TimeFloat3(Matrix4 M, float3 v) {
-	return (float3)(
-			dot((float3)(M.data[0].x, M.data[0].y, M.data[0].z), v)
-					+ M.data[0].w,
-			dot((float3)(M.data[1].x, M.data[1].y, M.data[1].z), v)
-					+ M.data[1].w,
-			dot((float3)(M.data[2].x, M.data[2].y, M.data[2].z), v)
-					+ M.data[2].w);
-}
+// inline float3 Mat4TimeFloat3(Matrix4 M, float3 v) {
+// 	return (float3)(
+// 			dot((float3)(M.data[0].x, M.data[0].y, M.data[0].z), v)
+// 					+ M.data[0].w,
+// 			dot((float3)(M.data[1].x, M.data[1].y, M.data[1].z), v)
+// 					+ M.data[1].w,
+// 			dot((float3)(M.data[2].x, M.data[2].y, M.data[2].z), v)
+// 					+ M.data[2].w);
+// }
 
-inline void setVolume(Volume v, uint3 pos, float2 d) {
-	v.data[pos.x + pos.y * v.size.x + pos.z * v.size.x * v.size.y] = (short2)(
-			d.x * 32766.0f, d.y);
-}
+// inline void setVolume(Volume v, uint3 pos, float2 d) {
+// 	v.data[pos.x + pos.y * v.size.x + pos.z * v.size.x * v.size.y] = (short2)(
+// 			d.x * 32766.0f, d.y);
+// }
 
-inline float3 posVolume(const Volume v, const uint3 p) {
-	return (float3)((p.x + 0.5f) * v.dim.x / v.size.x,
-			(p.y + 0.5f) * v.dim.y / v.size.y,
-			(p.z + 0.5f) * v.dim.z / v.size.z);
-}
+// inline float3 posVolume(const Volume v, const uint3 p) {
+// 	return (float3)((p.x + 0.5f) * v.dim.x / v.size.x,
+// 			(p.y + 0.5f) * v.dim.y / v.size.y,
+// 			(p.z + 0.5f) * v.dim.z / v.size.z);
+// }
 
-inline float2 getVolume(const Volume v, const uint3 pos) {
-	const short2 d = v.data[pos.x + pos.y * v.size.x
-			+ pos.z * v.size.x * v.size.y];
-	return (float2)(d.x * 0.00003051944088f, d.y); //  / 32766.0f
-}
+// inline float2 getVolume(const Volume v, const uint3 pos) {
+// 	const short2 d = v.data[pos.x + pos.y * v.size.x
+// 			+ pos.z * v.size.x * v.size.y];
+// 	return (float2)(d.x * 0.00003051944088f, d.y); //  / 32766.0f
+// }
 
-inline float vs(const uint3 pos, const Volume v) {
-	return v.data[pos.x + pos.y * v.size.x + pos.z * v.size.x * v.size.y].x;
-}
+// inline float vs(const uint3 pos, const Volume v) {
+// 	return v.data[pos.x + pos.y * v.size.x + pos.z * v.size.x * v.size.y].x;
+// }
 
-inline float interp(const float3 pos, const Volume v) {
-	const float3 scaled_pos = (float3)((pos.x * v.size.x / v.dim.x) - 0.5f,
-			(pos.y * v.size.y / v.dim.y) - 0.5f,
-			(pos.z * v.size.z / v.dim.z) - 0.5f);
-	float3 basef = (float3)(0);
-	const int3 base = convert_int3(floor(scaled_pos));
-	const float3 factor = (float3)(fract(scaled_pos, (float3 *) &basef));
-	const int3 lower = max(base, (int3)(0));
-	const int3 upper = min(base + (int3)(1), convert_int3(v.size) - (int3)(1));
-	return (((vs((uint3)(lower.x, lower.y, lower.z), v) * (1 - factor.x)
-			+ vs((uint3)(upper.x, lower.y, lower.z), v) * factor.x)
-			* (1 - factor.y)
-			+ (vs((uint3)(lower.x, upper.y, lower.z), v) * (1 - factor.x)
-					+ vs((uint3)(upper.x, upper.y, lower.z), v) * factor.x)
-					* factor.y) * (1 - factor.z)
-			+ ((vs((uint3)(lower.x, lower.y, upper.z), v) * (1 - factor.x)
-					+ vs((uint3)(upper.x, lower.y, upper.z), v) * factor.x)
-					* (1 - factor.y)
-					+ (vs((uint3)(lower.x, upper.y, upper.z), v)
-							* (1 - factor.x)
-							+ vs((uint3)(upper.x, upper.y, upper.z), v)
-									* factor.x) * factor.y) * factor.z)
-			* 0.00003051944088f;
-}
+// inline float interp(const float3 pos, const Volume v) {
+// 	const float3 scaled_pos = (float3)((pos.x * v.size.x / v.dim.x) - 0.5f,
+// 			(pos.y * v.size.y / v.dim.y) - 0.5f,
+// 			(pos.z * v.size.z / v.dim.z) - 0.5f);
+// 	float3 basef = (float3)(0);
+// 	const int3 base = convert_int3(floor(scaled_pos));
+// 	const float3 factor = (float3)(fract(scaled_pos, (float3 *) &basef));
+// 	const int3 lower = max(base, (int3)(0));
+// 	const int3 upper = min(base + (int3)(1), convert_int3(v.size) - (int3)(1));
+// 	return (((vs((uint3)(lower.x, lower.y, lower.z), v) * (1 - factor.x)
+// 			+ vs((uint3)(upper.x, lower.y, lower.z), v) * factor.x)
+// 			* (1 - factor.y)
+// 			+ (vs((uint3)(lower.x, upper.y, lower.z), v) * (1 - factor.x)
+// 					+ vs((uint3)(upper.x, upper.y, lower.z), v) * factor.x)
+// 					* factor.y) * (1 - factor.z)
+// 			+ ((vs((uint3)(lower.x, lower.y, upper.z), v) * (1 - factor.x)
+// 					+ vs((uint3)(upper.x, lower.y, upper.z), v) * factor.x)
+// 					* (1 - factor.y)
+// 					+ (vs((uint3)(lower.x, upper.y, upper.z), v)
+// 							* (1 - factor.x)
+// 							+ vs((uint3)(upper.x, upper.y, upper.z), v)
+// 									* factor.x) * factor.y) * factor.z)
+// 			* 0.00003051944088f;
+// }
 
-inline float3 grad(float3 pos, const Volume v) {
-	const float3 scaled_pos = (float3)((pos.x * v.size.x / v.dim.x) - 0.5f,
-			(pos.y * v.size.y / v.dim.y) - 0.5f,
-			(pos.z * v.size.z / v.dim.z) - 0.5f);
-	const int3 base = (int3)(floor(scaled_pos.x), floor(scaled_pos.y),
-			floor(scaled_pos.z));
-	const float3 basef = (float3)(0);
-	const float3 factor = (float3) fract(scaled_pos, (float3 *) &basef);
-	const int3 lower_lower = max(base - (int3)(1), (int3)(0));
-	const int3 lower_upper = max(base, (int3)(0));
-	const int3 upper_lower = min(base + (int3)(1),
-			convert_int3(v.size) - (int3)(1));
-	const int3 upper_upper = min(base + (int3)(2),
-			convert_int3(v.size) - (int3)(1));
-	const int3 lower = lower_upper;
-	const int3 upper = upper_lower;
+// inline float3 grad(float3 pos, const Volume v) {
+// 	const float3 scaled_pos = (float3)((pos.x * v.size.x / v.dim.x) - 0.5f,
+// 			(pos.y * v.size.y / v.dim.y) - 0.5f,
+// 			(pos.z * v.size.z / v.dim.z) - 0.5f);
+// 	const int3 base = (int3)(floor(scaled_pos.x), floor(scaled_pos.y),
+// 			floor(scaled_pos.z));
+// 	const float3 basef = (float3)(0);
+// 	const float3 factor = (float3) fract(scaled_pos, (float3 *) &basef);
+// 	const int3 lower_lower = max(base - (int3)(1), (int3)(0));
+// 	const int3 lower_upper = max(base, (int3)(0));
+// 	const int3 upper_lower = min(base + (int3)(1),
+// 			convert_int3(v.size) - (int3)(1));
+// 	const int3 upper_upper = min(base + (int3)(2),
+// 			convert_int3(v.size) - (int3)(1));
+// 	const int3 lower = lower_upper;
+// 	const int3 upper = upper_lower;
 
-	float3 gradient;
+// 	float3 gradient;
 
-	gradient.x = (((vs((uint3)(upper_lower.x, lower.y, lower.z), v)
-			- vs((uint3)(lower_lower.x, lower.y, lower.z), v)) * (1 - factor.x)
-			+ (vs((uint3)(upper_upper.x, lower.y, lower.z), v)
-					- vs((uint3)(lower_upper.x, lower.y, lower.z), v))
-					* factor.x) * (1 - factor.y)
-			+ ((vs((uint3)(upper_lower.x, upper.y, lower.z), v)
-					- vs((uint3)(lower_lower.x, upper.y, lower.z), v))
-					* (1 - factor.x)
-					+ (vs((uint3)(upper_upper.x, upper.y, lower.z), v)
-							- vs((uint3)(lower_upper.x, upper.y, lower.z), v))
-							* factor.x) * factor.y) * (1 - factor.z)
-			+ (((vs((uint3)(upper_lower.x, lower.y, upper.z), v)
-					- vs((uint3)(lower_lower.x, lower.y, upper.z), v))
-					* (1 - factor.x)
-					+ (vs((uint3)(upper_upper.x, lower.y, upper.z), v)
-							- vs((uint3)(lower_upper.x, lower.y, upper.z), v))
-							* factor.x) * (1 - factor.y)
-					+ ((vs((uint3)(upper_lower.x, upper.y, upper.z), v)
-							- vs((uint3)(lower_lower.x, upper.y, upper.z), v))
-							* (1 - factor.x)
-							+ (vs((uint3)(upper_upper.x, upper.y, upper.z), v)
-									- vs(
-											(uint3)(lower_upper.x, upper.y,
-													upper.z), v)) * factor.x)
-							* factor.y) * factor.z;
+// 	gradient.x = (((vs((uint3)(upper_lower.x, lower.y, lower.z), v)
+// 			- vs((uint3)(lower_lower.x, lower.y, lower.z), v)) * (1 - factor.x)
+// 			+ (vs((uint3)(upper_upper.x, lower.y, lower.z), v)
+// 					- vs((uint3)(lower_upper.x, lower.y, lower.z), v))
+// 					* factor.x) * (1 - factor.y)
+// 			+ ((vs((uint3)(upper_lower.x, upper.y, lower.z), v)
+// 					- vs((uint3)(lower_lower.x, upper.y, lower.z), v))
+// 					* (1 - factor.x)
+// 					+ (vs((uint3)(upper_upper.x, upper.y, lower.z), v)
+// 							- vs((uint3)(lower_upper.x, upper.y, lower.z), v))
+// 							* factor.x) * factor.y) * (1 - factor.z)
+// 			+ (((vs((uint3)(upper_lower.x, lower.y, upper.z), v)
+// 					- vs((uint3)(lower_lower.x, lower.y, upper.z), v))
+// 					* (1 - factor.x)
+// 					+ (vs((uint3)(upper_upper.x, lower.y, upper.z), v)
+// 							- vs((uint3)(lower_upper.x, lower.y, upper.z), v))
+// 							* factor.x) * (1 - factor.y)
+// 					+ ((vs((uint3)(upper_lower.x, upper.y, upper.z), v)
+// 							- vs((uint3)(lower_lower.x, upper.y, upper.z), v))
+// 							* (1 - factor.x)
+// 							+ (vs((uint3)(upper_upper.x, upper.y, upper.z), v)
+// 									- vs(
+// 											(uint3)(lower_upper.x, upper.y,
+// 													upper.z), v)) * factor.x)
+// 							* factor.y) * factor.z;
 
-	gradient.y = (((vs((uint3)(lower.x, upper_lower.y, lower.z), v)
-			- vs((uint3)(lower.x, lower_lower.y, lower.z), v)) * (1 - factor.x)
-			+ (vs((uint3)(upper.x, upper_lower.y, lower.z), v)
-					- vs((uint3)(upper.x, lower_lower.y, lower.z), v))
-					* factor.x) * (1 - factor.y)
-			+ ((vs((uint3)(lower.x, upper_upper.y, lower.z), v)
-					- vs((uint3)(lower.x, lower_upper.y, lower.z), v))
-					* (1 - factor.x)
-					+ (vs((uint3)(upper.x, upper_upper.y, lower.z), v)
-							- vs((uint3)(upper.x, lower_upper.y, lower.z), v))
-							* factor.x) * factor.y) * (1 - factor.z)
-			+ (((vs((uint3)(lower.x, upper_lower.y, upper.z), v)
-					- vs((uint3)(lower.x, lower_lower.y, upper.z), v))
-					* (1 - factor.x)
-					+ (vs((uint3)(upper.x, upper_lower.y, upper.z), v)
-							- vs((uint3)(upper.x, lower_lower.y, upper.z), v))
-							* factor.x) * (1 - factor.y)
-					+ ((vs((uint3)(lower.x, upper_upper.y, upper.z), v)
-							- vs((uint3)(lower.x, lower_upper.y, upper.z), v))
-							* (1 - factor.x)
-							+ (vs((uint3)(upper.x, upper_upper.y, upper.z), v)
-									- vs(
-											(uint3)(upper.x, lower_upper.y,
-													upper.z), v)) * factor.x)
-							* factor.y) * factor.z;
+// 	gradient.y = (((vs((uint3)(lower.x, upper_lower.y, lower.z), v)
+// 			- vs((uint3)(lower.x, lower_lower.y, lower.z), v)) * (1 - factor.x)
+// 			+ (vs((uint3)(upper.x, upper_lower.y, lower.z), v)
+// 					- vs((uint3)(upper.x, lower_lower.y, lower.z), v))
+// 					* factor.x) * (1 - factor.y)
+// 			+ ((vs((uint3)(lower.x, upper_upper.y, lower.z), v)
+// 					- vs((uint3)(lower.x, lower_upper.y, lower.z), v))
+// 					* (1 - factor.x)
+// 					+ (vs((uint3)(upper.x, upper_upper.y, lower.z), v)
+// 							- vs((uint3)(upper.x, lower_upper.y, lower.z), v))
+// 							* factor.x) * factor.y) * (1 - factor.z)
+// 			+ (((vs((uint3)(lower.x, upper_lower.y, upper.z), v)
+// 					- vs((uint3)(lower.x, lower_lower.y, upper.z), v))
+// 					* (1 - factor.x)
+// 					+ (vs((uint3)(upper.x, upper_lower.y, upper.z), v)
+// 							- vs((uint3)(upper.x, lower_lower.y, upper.z), v))
+// 							* factor.x) * (1 - factor.y)
+// 					+ ((vs((uint3)(lower.x, upper_upper.y, upper.z), v)
+// 							- vs((uint3)(lower.x, lower_upper.y, upper.z), v))
+// 							* (1 - factor.x)
+// 							+ (vs((uint3)(upper.x, upper_upper.y, upper.z), v)
+// 									- vs(
+// 											(uint3)(upper.x, lower_upper.y,
+// 													upper.z), v)) * factor.x)
+// 							* factor.y) * factor.z;
 
-	gradient.z = (((vs((uint3)(lower.x, lower.y, upper_lower.z), v)
-			- vs((uint3)(lower.x, lower.y, lower_lower.z), v)) * (1 - factor.x)
-			+ (vs((uint3)(upper.x, lower.y, upper_lower.z), v)
-					- vs((uint3)(upper.x, lower.y, lower_lower.z), v))
-					* factor.x) * (1 - factor.y)
-			+ ((vs((uint3)(lower.x, upper.y, upper_lower.z), v)
-					- vs((uint3)(lower.x, upper.y, lower_lower.z), v))
-					* (1 - factor.x)
-					+ (vs((uint3)(upper.x, upper.y, upper_lower.z), v)
-							- vs((uint3)(upper.x, upper.y, lower_lower.z), v))
-							* factor.x) * factor.y) * (1 - factor.z)
-			+ (((vs((uint3)(lower.x, lower.y, upper_upper.z), v)
-					- vs((uint3)(lower.x, lower.y, lower_upper.z), v))
-					* (1 - factor.x)
-					+ (vs((uint3)(upper.x, lower.y, upper_upper.z), v)
-							- vs((uint3)(upper.x, lower.y, lower_upper.z), v))
-							* factor.x) * (1 - factor.y)
-					+ ((vs((uint3)(lower.x, upper.y, upper_upper.z), v)
-							- vs((uint3)(lower.x, upper.y, lower_upper.z), v))
-							* (1 - factor.x)
-							+ (vs((uint3)(upper.x, upper.y, upper_upper.z), v)
-									- vs(
-											(uint3)(upper.x, upper.y,
-													lower_upper.z), v))
-									* factor.x) * factor.y) * factor.z;
+// 	gradient.z = (((vs((uint3)(lower.x, lower.y, upper_lower.z), v)
+// 			- vs((uint3)(lower.x, lower.y, lower_lower.z), v)) * (1 - factor.x)
+// 			+ (vs((uint3)(upper.x, lower.y, upper_lower.z), v)
+// 					- vs((uint3)(upper.x, lower.y, lower_lower.z), v))
+// 					* factor.x) * (1 - factor.y)
+// 			+ ((vs((uint3)(lower.x, upper.y, upper_lower.z), v)
+// 					- vs((uint3)(lower.x, upper.y, lower_lower.z), v))
+// 					* (1 - factor.x)
+// 					+ (vs((uint3)(upper.x, upper.y, upper_lower.z), v)
+// 							- vs((uint3)(upper.x, upper.y, lower_lower.z), v))
+// 							* factor.x) * factor.y) * (1 - factor.z)
+// 			+ (((vs((uint3)(lower.x, lower.y, upper_upper.z), v)
+// 					- vs((uint3)(lower.x, lower.y, lower_upper.z), v))
+// 					* (1 - factor.x)
+// 					+ (vs((uint3)(upper.x, lower.y, upper_upper.z), v)
+// 							- vs((uint3)(upper.x, lower.y, lower_upper.z), v))
+// 							* factor.x) * (1 - factor.y)
+// 					+ ((vs((uint3)(lower.x, upper.y, upper_upper.z), v)
+// 							- vs((uint3)(lower.x, upper.y, lower_upper.z), v))
+// 							* (1 - factor.x)
+// 							+ (vs((uint3)(upper.x, upper.y, upper_upper.z), v)
+// 									- vs(
+// 											(uint3)(upper.x, upper.y,
+// 													lower_upper.z), v))
+// 									* factor.x) * factor.y) * factor.z;
 
-	return gradient
-			* (float3)(v.dim.x / v.size.x, v.dim.y / v.size.y,
-					v.dim.z / v.size.z) * (0.5f * 0.00003051944088f);
-}
+// 	return gradient
+// 			* (float3)(v.dim.x / v.size.x, v.dim.y / v.size.y,
+// 					v.dim.z / v.size.z) * (0.5f * 0.00003051944088f);
+// }
 
-inline float3 get_translation(const Matrix4 view) {
-	return (float3)(view.data[0].w, view.data[1].w, view.data[2].w);
-}
+// inline float3 get_translation(const Matrix4 view) {
+// 	return (float3)(view.data[0].w, view.data[1].w, view.data[2].w);
+// }
 
-inline float3 myrotate(const Matrix4 M, const float3 v) {
-	return (float3)(dot((float3)(M.data[0].x, M.data[0].y, M.data[0].z), v),
-			dot((float3)(M.data[1].x, M.data[1].y, M.data[1].z), v),
-			dot((float3)(M.data[2].x, M.data[2].y, M.data[2].z), v));
-}
+// inline float3 myrotate(const Matrix4 M, const float3 v) {
+// 	return (float3)(dot((float3)(M.data[0].x, M.data[0].y, M.data[0].z), v),
+// 			dot((float3)(M.data[1].x, M.data[1].y, M.data[1].z), v),
+// 			dot((float3)(M.data[2].x, M.data[2].y, M.data[2].z), v));
+// }
 
-float4 raycast(const Volume v, const uint2 pos, const Matrix4 view,
-		const float nearPlane, const float farPlane, const float step,
-		const float largestep) {
+// float4 raycast(const Volume v, const uint2 pos, const Matrix4 view,
+// 		const float nearPlane, const float farPlane, const float step,
+// 		const float largestep) {
 
-	const float3 origin = get_translation(view);
-	const float3 direction = myrotate(view, (float3)(pos.x, pos.y, 1.f));
+// 	const float3 origin = get_translation(view);
+// 	const float3 direction = myrotate(view, (float3)(pos.x, pos.y, 1.f));
 
-	// intersect ray with a box
-	//
-	// www.siggraph.org/education/materials/HyperGraph/raytrace/rtinter3.htm
-	// compute intersection of ray with all six bbox planes
-	const float3 invR = (float3)(1.0f) / direction;
-	const float3 tbot = (float3) - 1 * invR * origin;
-	const float3 ttop = invR * (v.dim - origin);
+// 	// intersect ray with a box
+// 	//
+// 	// www.siggraph.org/education/materials/HyperGraph/raytrace/rtinter3.htm
+// 	// compute intersection of ray with all six bbox planes
+// 	const float3 invR = (float3)(1.0f) / direction;
+// 	const float3 tbot = (float3) - 1 * invR * origin;
+// 	const float3 ttop = invR * (v.dim - origin);
 
-	// re-order intersections to find smallest and largest on each axis
-	const float3 tmin = fmin(ttop, tbot);
-	const float3 tmax = fmax(ttop, tbot);
+// 	// re-order intersections to find smallest and largest on each axis
+// 	const float3 tmin = fmin(ttop, tbot);
+// 	const float3 tmax = fmax(ttop, tbot);
 
-	// find the largest tmin and the smallest tmax
-	const float largest_tmin = fmax(fmax(tmin.x, tmin.y), fmax(tmin.x, tmin.z));
-	const float smallest_tmax = fmin(fmin(tmax.x, tmax.y),
-			fmin(tmax.x, tmax.z));
+// 	// find the largest tmin and the smallest tmax
+// 	const float largest_tmin = fmax(fmax(tmin.x, tmin.y), fmax(tmin.x, tmin.z));
+// 	const float smallest_tmax = fmin(fmin(tmax.x, tmax.y),
+// 			fmin(tmax.x, tmax.z));
 
-	// check against near and far plane
-	const float tnear = fmax(largest_tmin, nearPlane);
-	const float tfar = fmin(smallest_tmax, farPlane);
+// 	// check against near and far plane
+// 	const float tnear = fmax(largest_tmin, nearPlane);
+// 	const float tfar = fmin(smallest_tmax, farPlane);
 
-	if (tnear < tfar) {
-		// first walk with largesteps until we found a hit
-		float t = tnear;
-		float stepsize = largestep;
-		float f_t = interp(origin + direction * t, v);
-		float f_tt = 0;
-		if (f_t > 0) { // ups, if we were already in it, then don't render anything here
-			for (; t < tfar; t += stepsize) {
-				f_tt = interp(origin + direction * t, v);
-				if (f_tt < 0)                  // got it, jump out of inner loop
-					break;
-				if (f_tt < 0.8f)               // coming closer, reduce stepsize
-					stepsize = step;
-				f_t = f_tt;
-			}
-			if (f_tt < 0) {           // got it, calculate accurate intersection
-				t = t + stepsize * f_tt / (f_t - f_tt);
-				return (float4)(origin + direction * t, t);
-			}
-		}
-	}
+// 	if (tnear < tfar) {
+// 		// first walk with largesteps until we found a hit
+// 		float t = tnear;
+// 		float stepsize = largestep;
+// 		float f_t = interp(origin + direction * t, v);
+// 		float f_tt = 0;
+// 		if (f_t > 0) { // ups, if we were already in it, then don't render anything here
+// 			for (; t < tfar; t += stepsize) {
+// 				f_tt = interp(origin + direction * t, v);
+// 				if (f_tt < 0)                  // got it, jump out of inner loop
+// 					break;
+// 				if (f_tt < 0.8f)               // coming closer, reduce stepsize
+// 					stepsize = step;
+// 				f_t = f_tt;
+// 			}
+// 			if (f_tt < 0) {           // got it, calculate accurate intersection
+// 				t = t + stepsize * f_tt / (f_t - f_tt);
+// 				return (float4)(origin + direction * t, t);
+// 			}
+// 		}
+// 	}
 
-	return (float4)(0);
-}
+// 	return (float4)(0);
+// }
 
 /************** KERNELS ***************/
 
@@ -376,22 +376,13 @@ float4 raycast(const Volume v, const uint2 pos, const Matrix4 view,
 // 		__global short2 * v_data,
 // 		const uint3 v_size,
 // 		const float3 v_dim,
-// 		const float4 view0,
-// 		const float4 view1,
-// 		const float4 view2,
-// 		const float4 view3,
+// 		const Matrix4 view,
 // 		const float nearPlane,
 // 		const float farPlane,
 // 		const float step,
 // 		const float largestep,
 // 		const float3 light,
 // 		const float3 ambient) {
-
-// 	Matrix4 view;
-// 	view.data[0] = view0;
-// 	view.data[1] = view1;
-// 	view.data[2] = view2;
-// 	view.data[3] = view3;
 
 // 	const Volume v = {v_size, v_dim,v_data};
 
@@ -424,20 +415,11 @@ float4 raycast(const Volume v, const uint2 pos, const Matrix4 view,
 // 		__global short2 * v_data,
 // 		const uint3 v_size,
 // 		const float3 v_dim,
-// 		const float4 view0,
-// 		const float4 view1,
-// 		const float4 view2,
-// 		const float4 view3,
+// 		const Matrix4 view,
 // 		const float nearPlane,
 // 		const float farPlane,
 // 		const float step,
 // 		const float largestep ) {
-
-// 	Matrix4 view;
-// 	view.data[0] = view0;
-// 	view.data[1] = view1;
-// 	view.data[2] = view2;
-// 	view.data[3] = view3;
 
 // 	const Volume volume = {v_size, v_dim,v_data};
 
@@ -463,71 +445,71 @@ float4 raycast(const Volume v, const uint2 pos, const Matrix4 view,
 // 	}
 // }
 
-__kernel void integrateKernel (
-		__global short2 * v_data,
-		const uint3 v_size,
-		const float3 v_dim,
-		__global const float * depth,
-		const uint2 depthSize,
-		const float4 invTrack0,
-		const float4 invTrack1,
-		const float4 invTrack2,
-		const float4 invTrack3,
-		const float4 K0,
-		const float4 K1,
-		const float4 K2,
-		const float4 K3,
-		const float mu,
-		const float maxweight,
-		const float3 delta,
-		const float3 cameraDelta
-) {
+// __kernel void integrateKernel (
+// 		__global short2 * v_data,
+// 		const uint3 v_size,
+// 		const float3 v_dim,
+// 		__global const float * depth,
+// 		const uint2 depthSize,
+// 		const float4 invTrack0,
+// 		const float4 invTrack1,
+// 		const float4 invTrack2,
+// 		const float4 invTrack3,
+// 		const float4 K0,
+// 		const float4 K1,
+// 		const float4 K2,
+// 		const float4 K3,
+// 		const float mu,
+// 		const float maxweight,
+// 		const float3 delta,
+// 		const float3 cameraDelta
+// ) {
 
-	Matrix4 invTrack;
-	invTrack.data[0] = invTrack0;
-	invTrack.data[1] = invTrack1;
-	invTrack.data[2] = invTrack2;
-	invTrack.data[3] = invTrack3;
+// 	Matrix4 invTrack;
+// 	invTrack.data[0] = invTrack0;
+// 	invTrack.data[1] = invTrack1;
+// 	invTrack.data[2] = invTrack2;
+// 	invTrack.data[3] = invTrack3;
 
-	Matrix4 K;
-	K.data[0] = K0;
-	K.data[1] = K1;
-	K.data[2] = K2;
-	K.data[3] = K3;
+// 	Matrix4 K;
+// 	K.data[0] = K0;
+// 	K.data[1] = K1;
+// 	K.data[2] = K2;
+// 	K.data[3] = K3;
 
-	Volume vol; vol.data = v_data; vol.size = v_size; vol.dim = v_dim;
+// 	Volume vol; vol.data = v_data; vol.size = v_size; vol.dim = v_dim;
 
-	uint3 pix = (uint3) (get_global_id(0),get_global_id(1),0);
-	const int sizex = get_global_size(0);
+// 	uint3 pix = (uint3) (get_global_id(0),get_global_id(1),0);
+// 	const int sizex = get_global_size(0);
 
-	float3 pos = Mat4TimeFloat3 (invTrack , posVolume(vol,pix));
-	float3 cameraX = Mat4TimeFloat3 ( K , pos);
+// 	float3 pos = Mat4TimeFloat3 (invTrack , posVolume(vol,pix));
+// 	float3 cameraX = Mat4TimeFloat3 ( K , pos);
 
-	for(pix.z = 0; pix.z < vol.size.z; ++pix.z, pos += delta, cameraX += cameraDelta) {
-		if(pos.z < 0.0001f) // some near plane constraint
-		continue;
-		const float2 pixel = (float2) (cameraX.x/cameraX.z + 0.5f, cameraX.y/cameraX.z + 0.5f);
+// 	for(pix.z = 0; pix.z < vol.size.z; ++pix.z, pos += delta, cameraX += cameraDelta) {
+// 		if(pos.z < 0.0001f) // some near plane constraint
+// 		continue;
+// 		const float2 pixel = (float2) (cameraX.x/cameraX.z + 0.5f, cameraX.y/cameraX.z + 0.5f);
 
-		if(pixel.x < 0 || pixel.x > depthSize.x-1 || pixel.y < 0 || pixel.y > depthSize.y-1)
-		continue;
-		const uint2 px = (uint2)(pixel.x, pixel.y);
-		float depthpx = depth[px.x + depthSize.x * px.y];
+// 		if(pixel.x < 0 || pixel.x > depthSize.x-1 || pixel.y < 0 || pixel.y > depthSize.y-1)
+// 		continue;
+// 		const uint2 px = (uint2)(pixel.x, pixel.y);
+// 		float depthpx = depth[px.x + depthSize.x * px.y];
 
-		if(depthpx == 0) continue;
-		const float diff = ((depthpx) - cameraX.z) * sqrt(1+sq(pos.x/pos.z) + sq(pos.y/pos.z));
+// 		if(depthpx == 0) continue;
+// 		const float diff = ((depthpx) - cameraX.z) * sqrt(1+sq(pos.x/pos.z) + sq(pos.y/pos.z));
 
-		if(diff > -mu) {
-			const float sdf = fmin(1.f, diff/mu);
-			float2 data = getVolume(vol,pix);
-			data.x = clamp((data.y*data.x + sdf)/(data.y + 1), -1.f, 1.f);
-			data.y = fmin(data.y+1, maxweight);
-			setVolume(vol,pix, data);
-		}
-	}
+// 		if(diff > -mu) {
+// 			const float sdf = fmin(1.f, diff/mu);
+// 			float2 data = getVolume(vol,pix);
+// 			data.x = clamp((data.y*data.x + sdf)/(data.y + 1), -1.f, 1.f);
+// 			data.y = fmin(data.y+1, maxweight);
+// 			setVolume(vol,pix, data);
+// 		}
+// 	}
 
-}
+// }
 
-// inVertex iterate
+// // inVertex iterate
 // __kernel void trackKernel (
 // 		__global TrackData * output,
 // 		const uint2 outputSize,
@@ -539,11 +521,29 @@ __kernel void integrateKernel (
 // 		const uint2 refVertexSize,
 // 		__global const float * refNormal,// float3
 // 		const uint2 refNormalSize,
-// 		const Matrix4 Ttrack,
-// 		const Matrix4 view,
+// 		const float4 Ttrack0,
+// 		const float4 Ttrack1,
+// 		const float4 Ttrack2,
+// 		const float4 Ttrack3,
+// 		const float4 view0,
+// 		const float4 view1,
+// 		const float4 view2,
+// 		const float4 view3,
 // 		const float dist_threshold,
 // 		const float normal_threshold
 // ) {
+
+// 	Matrix4 Ttrack;
+// 	Ttrack.data[0] = Ttrack0;
+// 	Ttrack.data[1] = Ttrack1;
+// 	Ttrack.data[2] = Ttrack2;
+// 	Ttrack.data[3] = Ttrack3;
+
+// 	Matrix4 view;
+// 	view.data[0] = view0;
+// 	view.data[1] = view1;
+// 	view.data[2] = view2;
+// 	view.data[3] = view3;
 
 // 	const uint2 pixel = (uint2)(get_global_id(0),get_global_id(1));
 
@@ -732,7 +732,7 @@ __kernel void reduceKernel (
 // 	const float3 right = vload3(vright.x + vertexSize.x * vright.y,vertex);
 // 	const float3 up = vload3(vup.x + vertexSize.x * vup.y,vertex);
 // 	const float3 down = vload3(vdown.x + vertexSize.x * vdown.y,vertex);
-// 	/*
+	
 // 	 unsigned long int val =  0 ;
 // 	 val = max(((int) pixel.x)-1,0) + vertexSize.x * pixel.y;
 // 	 const float3 left   = vload3(   val,vertex);
@@ -743,7 +743,7 @@ __kernel void reduceKernel (
 // 	 const float3 up     = vload3(  val ,vertex);
 // 	 val =  pixel.x                       + vertexSize.x *   min(pixel.y+1,vertexSize.y-1)   ;
 // 	 const float3 down   = vload3(  val   ,vertex);
-// 	 */
+	 
 // 	if(left.z == 0 || right.z == 0|| up.z ==0 || down.z == 0) {
 // 		//float3 n = vload3(pixel.x + normalSize.x * pixel.y,normal);
 // 		//n.x=INVALID;

@@ -17,7 +17,7 @@
 #define STR(x) XSTR(x)
 
 #ifndef AOCX_PATH
-#define AOCX_PATH "/home/mcanales/Desktop/slambench/kfusion/src/opencl/kernels_fpga_14"
+#define AOCX_PATH "/home/mcanales/Desktop/slambench/kfusion/src/opencl/kernels_fpga_v1_14"
 #endif
 
 cl_int             clError;
@@ -37,7 +37,7 @@ int opencl_clean(void) {
     clError &= clReleaseProgram(programs[1]);
     clError &= clReleaseCommandQueue(cmd_queues[0][0]);
     clError &= clReleaseCommandQueue(cmd_queues[1][0]);
-    clError &= clReleaseCommandQueue(cmd_queues[1][1]);
+    //clError &= clReleaseCommandQueue(cmd_queues[1][1]);
     clError &= clReleaseContext(contexts[0]);
     clError &= clReleaseContext(contexts[1]);
 
@@ -99,7 +99,8 @@ int opencl_init(void) {
     // The list of supported properties is described in the table below.
     cl_context_properties ctxprop_fpga[] = {CL_CONTEXT_PLATFORM, (cl_context_properties) platform_ids[0], 0};
 
-    contexts[0] = clCreateContextFromType(ctxprop_fpga, CL_DEVICE_TYPE_ACCELERATOR, NULL, NULL, NULL);
+    contexts[0] = clCreateContextFromType(ctxprop_fpga, CL_DEVICE_TYPE_ACCELERATOR, NULL, NULL, &clError);
+    printf("res: %d\n", clError);
     if(!contexts[0]) {
         printf("ERROR: clCreateContextFromType(%s) failed\n", "FPGA");
         return -1;
