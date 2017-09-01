@@ -89,6 +89,7 @@ void Kfusion::languageSpecificConstructor() {
 	ocl_ScaledDepth = (cl_mem*) malloc(sizeof(cl_mem) * iterations.size());
 
 	for (unsigned int i = 0; i < iterations.size(); ++i) {
+		printf("sizeof buffer: %d\n", sizeof(float) * (computationSize.x * computationSize.y) / (int) pow(2, i));
 		ocl_ScaledDepth[i] = clCreateBuffer(contexts[0], CL_MEM_READ_WRITE, sizeof(float) * (computationSize.x * computationSize.y) / (int) pow(2, i), NULL, &clError);
 		checkErr(clError, "clCreateBuffer");
 	}
@@ -1091,4 +1092,6 @@ void Kfusion::computeFrame(const ushort * inputDepth, const uint2 inputSize,
 
 void synchroniseDevices() {
 	clFinish(cmd_queues[0][0]);
+	//clFinish(cmd_queues[1][0]);
+	//clFinish(cmd_queues[1][1]);
 }

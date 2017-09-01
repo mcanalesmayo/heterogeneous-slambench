@@ -94,10 +94,10 @@ SET (OPENCL_LIBRARIES ${OPENCL_LIBRARY})
 IF(DEFINED ENV{ALTERAOCLSDKROOT})
   # find OpenCL compiler
   # aoc kernel.cl -o kernel.aocx --board de5net_a7
-  FIND_PROGRAM(AOC_BIN aoc)
-  IF(NOT AOC_BIN)
-    MESSAGE (FATAL_ERROR "Altera OpenCL compiler not found")
-  ENDIF(NOT AOC_BIN)
+  #FIND_PROGRAM(AOC_BIN aoc)
+  #IF(NOT AOC_BIN)
+  #  MESSAGE (FATAL_ERROR "Altera OpenCL compiler not found")
+  #ENDIF(NOT AOC_BIN)
 
   # include OpenCL headers
   EXECUTE_PROCESS(COMMAND aocl compile-config OUTPUT_VARIABLE AOCL_INCLUDE_DIRS)
@@ -238,3 +238,8 @@ MARK_AS_ADVANCED (OPENCL_INCLUDE_DIR OPENCL_LIBRARY)
 
 FIND_PACKAGE_HANDLE_STANDARD_ARGS (OpenCL REQUIRED_VARS OPENCL_ROOT_DIR
   OPENCL_INCLUDE_DIR OPENCL_LIBRARY VERSION_VAR OPENCL_VERSION)
+
+
+SET(OPENCL_INCLUDE_DIRS /home/root/opencl_arm32_rte/host/include /home/root/heterogeneous-slambench/kfusion/src/opencl/AOCLUtils/src/opencl/AOCLUtils)
+SET(AOCL_UTILS_SRCS /home/root/heterogeneous-slambench/kfusion/src/opencl/AOCLUtils/opencl.cpp /home/root/heterogeneous-slambench/kfusion/src/opencl/AOCLUtils/options.cpp)
+SET(OPENCL_LIBRARIES -L/home/root/opencl_arm32_rte/board/c5soc/arm32/lib -L/home/root/opencl_arm32_rte/host/arm32/lib alteracl alterammdpcie elf)
