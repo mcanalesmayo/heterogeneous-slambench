@@ -100,6 +100,7 @@ int main(int argc, char ** argv) {
 
 	//  =========  BASIC PARAMETERS  (input size / computation size )  =========
 
+	printf("input size.x: %d; input size.y: %d; config.compute_size_ratio: %d\n", inputSize.x, inputSize.y, config.compute_size_ratio);
 	const uint2 computationSize = make_uint2(
 			inputSize.x / config.compute_size_ratio,
 			inputSize.y / config.compute_size_ratio);

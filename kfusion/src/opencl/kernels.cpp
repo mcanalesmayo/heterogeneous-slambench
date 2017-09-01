@@ -89,7 +89,7 @@ void Kfusion::languageSpecificConstructor() {
 	ocl_ScaledDepth = (cl_mem*) malloc(sizeof(cl_mem) * iterations.size());
 
 	for (unsigned int i = 0; i < iterations.size(); ++i) {
-		printf("sizeof buffer: %d\n", sizeof(float) * (computationSize.x * computationSize.y) / (int) pow(2, i));
+		printf("%d * (%d * %d) / (%d) sizeof buffer: %d\n", sizeof(float), computationSize.x, computationSize.y, (int) pow(2, i), sizeof(float) * (computationSize.x * computationSize.y) / (int) pow(2, i));
 		ocl_ScaledDepth[i] = clCreateBuffer(contexts[0], CL_MEM_READ_WRITE, sizeof(float) * (computationSize.x * computationSize.y) / (int) pow(2, i), NULL, &clError);
 		checkErr(clError, "clCreateBuffer");
 	}
