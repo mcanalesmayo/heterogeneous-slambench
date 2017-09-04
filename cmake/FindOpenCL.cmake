@@ -94,10 +94,10 @@ SET (OPENCL_LIBRARIES ${OPENCL_LIBRARY})
 IF(DEFINED ENV{ALTERAOCLSDKROOT})
   # find OpenCL compiler
   # aoc kernel.cl -o kernel.aocx --board de5net_a7
-  FIND_PROGRAM(AOC_BIN aoc)
-  IF(NOT AOC_BIN)
-    MESSAGE (FATAL_ERROR "Altera OpenCL compiler not found")
-  ENDIF(NOT AOC_BIN)
+  #FIND_PROGRAM(AOC_BIN aoc)
+  #IF(NOT AOC_BIN)
+  #  MESSAGE (FATAL_ERROR "Altera OpenCL compiler not found")
+  #ENDIF(NOT AOC_BIN)
 
   # include OpenCL headers
   EXECUTE_PROCESS(COMMAND aocl compile-config OUTPUT_VARIABLE AOCL_INCLUDE_DIRS)
@@ -127,19 +127,22 @@ IF(DEFINED ENV{ALTERAOCLSDKROOT})
     IF (NOT ${LINK_FLAG} STREQUAL ${BKP_FLAG})
       # trim flag
       STRING(REPLACE "\n" "" LINK_FLAG ${LINK_FLAG})
-      # find library
-      FIND_LIBRARY (OPENCL_LIBRARY_${LINK_FLAG}
-      NAMES ${LINK_FLAG}
-      PATHS ${AOCL_LINK_LIBRARIES_DIRS}
-      DOC "OpenCL library")
+      # skip libstdc++
+      IF (NOT ${LINK_FLAG} STREQUAL "stdc++")
+        # find library
+        FIND_LIBRARY (OPENCL_LIBRARY_${LINK_FLAG}
+        NAMES ${LINK_FLAG}
+        PATHS ${AOCL_LINK_LIBRARIES_DIRS}
+        DOC "OpenCL library")
 
-      # if library was not found then raise fatal error
-      IF (${OPENCL_LIBRARY_${LINK_FLAG}} STREQUAL "OPENCL_LIBRARY_${LINK_FLAG}-NOTFOUND")
-        MESSAGE (FATAL_ERROR "-- Library ${LINK_FLAG} not found")
-      ENDIF (${OPENCL_LIBRARY_${LINK_FLAG}} STREQUAL "OPENCL_LIBRARY_${LINK_FLAG}-NOTFOUND")
+        # if library was not found then raise fatal error
+        IF (${OPENCL_LIBRARY_${LINK_FLAG}} STREQUAL "OPENCL_LIBRARY_${LINK_FLAG}-NOTFOUND")
+          MESSAGE (FATAL_ERROR "-- Library ${LINK_FLAG} not found")
+        ENDIF (${OPENCL_LIBRARY_${LINK_FLAG}} STREQUAL "OPENCL_LIBRARY_${LINK_FLAG}-NOTFOUND")
 
-      # append to list of libraries
-      SET (OPENCL_LIBRARIES "${OPENCL_LIBRARIES} ${OPENCL_LIBRARY_${LINK_FLAG}}")
+        # append to list of libraries
+        SET (OPENCL_LIBRARIES "${OPENCL_LIBRARIES} ${OPENCL_LIBRARY_${LINK_FLAG}}")
+      ENDIF (NOT ${LINK_FLAG} STREQUAL "stdc++")
     # other flags
     ELSE (NOT ${LINK_FLAG} STREQUAL ${BKP_FLAG})
       # append to list of linker flags
@@ -235,3 +238,8 @@ MARK_AS_ADVANCED (OPENCL_INCLUDE_DIR OPENCL_LIBRARY)
 
 FIND_PACKAGE_HANDLE_STANDARD_ARGS (OpenCL REQUIRED_VARS OPENCL_ROOT_DIR
   OPENCL_INCLUDE_DIR OPENCL_LIBRARY VERSION_VAR OPENCL_VERSION)
+
+
+SET(OPENCL_INCLUDE_DIRS /home/root/opencl_arm32_rte/host/include /home/root/heterogeneous-slambench/kfusion/src/opencl/AOCLUtils/src/opencl/AOCLUtils)
+SET(AOCL_UTILS_SRCS /home/root/heterogeneous-slambench/kfusion/src/opencl/AOCLUtils/opencl.cpp /home/root/heterogeneous-slambench/kfusion/src/opencl/AOCLUtils/options.cpp)
+SET(OPENCL_LIBRARIES -L/home/root/opencl_arm32_rte/board/c5soc/arm32/lib -L/home/root/opencl_arm32_rte/host/arm32/lib alteracl alterammdpcie elf)
