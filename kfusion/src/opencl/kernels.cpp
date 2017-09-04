@@ -628,7 +628,7 @@ void mm2metersKernel(float * out, uint2 outSize, const ushort * in,
 }
 
 void halfSampleRobustImageKernel(uint2 inSize, const float e_d, const int r, int i) {
-	TICK();
+	//TICK();
 	// outSize = computationSize / 2
 	// outSize = computationSize / 4
 	// outSize = computationSize / 8
@@ -661,7 +661,7 @@ void halfSampleRobustImageKernel(uint2 inSize, const float e_d, const int r, int
 			NULL, NULL);
 	checkErr(clError, "clEnqueueNDRangeKernel");
 
-	TOCK("halfSampleRobustImageKernel", outSize.x * outSize.y);
+	//TOCK("halfSampleRobustImageKernel", outSize.x * outSize.y);
 }
 
 void integrateKernel(Volume vol, const float* depth, uint2 depthSize,
