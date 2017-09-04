@@ -20,3 +20,10 @@ livingRoom*.gt.freiburg
 TooN/
 OpenNI2dev/
 libfreenect/
+
+# log files
+*.csv
+
+# altera binaries
+*.aocx
+*.aoco
