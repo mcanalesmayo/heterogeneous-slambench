@@ -43,9 +43,7 @@
 
 #endif
 
-cl_kernel halfSampleRobustImage_ocl_kernel;
-
-cl_mem * ocl_ScaledDepth = NULL;
+cl_kernel depth2vertex_ocl_kernel;
 
 // input once
 float * gaussian;
@@ -88,15 +86,7 @@ void clean() {
 void Kfusion::languageSpecificConstructor() {
 	init();
 
-	ocl_ScaledDepth = (cl_mem*) malloc(sizeof(cl_mem) * iterations.size());
-
-	for (unsigned int i = 0; i < iterations.size(); ++i) {
-		printf("%d * (%d * %d) / (%d) sizeof buffer: %d\n", sizeof(float), computationSize.x, computationSize.y, (int) pow(2, i), sizeof(float) * (computationSize.x * computationSize.y) / (int) pow(2, i));
-		ocl_ScaledDepth[i] = clCreateBuffer(contexts[0], CL_MEM_READ_WRITE, sizeof(float) * (computationSize.x * computationSize.y) / (int) pow(2, i), NULL, &clError);
-		checkErr(clError, "clCreateBuffer");
-	}
-
-	halfSampleRobustImage_ocl_kernel = clCreateKernel(programs[0], "halfSampleRobustImageKernel", &clError);
+	depth2vertex_ocl_kernel = clCreateKernel(programs[0], "depth2vertexKernel", &clError);
 	checkErr(clError, "clCreateKernel");
 
 	if (getenv("KERNEL_TIMINGS"))
@@ -146,21 +136,8 @@ void Kfusion::languageSpecificConstructor() {
 
 Kfusion::~Kfusion() {
 
-	for (unsigned int i = 0; i < iterations.size(); ++i) {
-		if (ocl_ScaledDepth[i]) {
-			clError = clReleaseMemObject(ocl_ScaledDepth[i]);
-			checkErr(clError, "clReleaseMem");
-			ocl_ScaledDepth[i] = NULL;
-		}
-	}
-
-	if (ocl_ScaledDepth) {
-		free(ocl_ScaledDepth);
-		ocl_ScaledDepth = NULL;
-	}
-
-	RELEASE_KERNEL(halfSampleRobustImage_ocl_kernel);
-	halfSampleRobustImage_ocl_kernel = NULL;
+	RELEASE_KERNEL(depth2vertex_ocl_kernel);
+	depth2vertex_ocl_kernel = NULL;
 
 	free(floatDepth);
 	free(trackingResult);
@@ -628,42 +605,41 @@ void mm2metersKernel(float * out, uint2 outSize, const ushort * in,
 		}
 	TOCK("mm2metersKernel", outSize.x * outSize.y);
 }
-
-void halfSampleRobustImageKernel(uint2 inSize, const float e_d, const int r, int i) {
-	//TICK();
-	// outSize = computationSize / 2
-	// outSize = computationSize / 4
-	// outSize = computationSize / 8
+void halfSampleRobustImageKernel(float* out, const float* in, uint2 inSize,
+		const float e_d, const int r) {
+	TICK();
 	uint2 outSize = make_uint2(inSize.x / 2, inSize.y / 2);
+	unsigned int y;
+#pragma omp parallel for \
+        shared(out), private(y)
+	for (y = 0; y < outSize.y; y++) {
+		for (unsigned int x = 0; x < outSize.x; x++) {
+			uint2 pixel = make_uint2(x, y);
+			const uint2 centerPixel = 2 * pixel;
 
-	int arg = 0;
-	char errStr[20];
-
-	clError = clSetKernelArg(halfSampleRobustImage_ocl_kernel, arg++, sizeof(cl_mem), &ocl_ScaledDepth[i]);
-	sprintf(errStr, "clSetKernelArg%d", arg);
-	checkErr(clError, errStr);
-	clError = clSetKernelArg(halfSampleRobustImage_ocl_kernel, arg++, sizeof(cl_mem), &ocl_ScaledDepth[i-1]);
-	sprintf(errStr, "clSetKernelArg%d", arg);
-	checkErr(clError, errStr);
-	clError = clSetKernelArg(halfSampleRobustImage_ocl_kernel, arg++, sizeof(cl_uint2), &inSize);
-	sprintf(errStr, "clSetKernelArg%d", arg);
-	checkErr(clError, errStr);
-	clError = clSetKernelArg(halfSampleRobustImage_ocl_kernel, arg++, sizeof(cl_float), &e_d);
-	sprintf(errStr, "clSetKernelArg%d", arg);
-	checkErr(clError, errStr);
-	clError = clSetKernelArg(halfSampleRobustImage_ocl_kernel, arg++, sizeof(cl_int), &r);
-	sprintf(errStr, "clSetKernelArg%d", arg);
-	checkErr(clError, errStr);
-
-	size_t globalWorksize[2] = { outSize.x, outSize.y };
-
-	clError = clEnqueueNDRangeKernel(cmd_queues[0][0],
-			halfSampleRobustImage_ocl_kernel, 2, NULL, globalWorksize, NULL,
-			0,
-			NULL, NULL);
-	checkErr(clError, "clEnqueueNDRangeKernel");
-
-	//TOCK("halfSampleRobustImageKernel", outSize.x * outSize.y);
+			float sum = 0.0f;
+			float t = 0.0f;
+			const float center = in[centerPixel.x
+					+ centerPixel.y * inSize.x];
+			for (int i = -r + 1; i <= r; ++i) {
+				for (int j = -r + 1; j <= r; ++j) {
+					uint2 cur = make_uint2(
+							clamp(
+									make_int2(centerPixel.x + j,
+											centerPixel.y + i), make_int2(0),
+									make_int2(2 * outSize.x - 1,
+											2 * outSize.y - 1)));
+					float current = in[cur.x + cur.y * inSize.x];
+					if (fabsf(current - center) < e_d) {
+						sum += 1.0f;
+						t += current;
+					}
+				}
+			}
+			out[pixel.x + pixel.y * outSize.x] = t / sum;
+		}
+	}
+	TOCK("halfSampleRobustImageKernel", outSize.x * outSize.y);
 }
 
 void integrateKernel(Volume vol, const float* depth, uint2 depthSize,
@@ -961,14 +937,11 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 	if (frame % tracking_rate != 0)
 		return false;
 
-	/* Write first buffer */
-	clError = clEnqueueWriteBuffer(cmd_queues[0][0], ocl_ScaledDepth[0], CL_TRUE, 0, computationSize.x * computationSize.y * sizeof(float), &ScaledDepth[0][0], 0, NULL, NULL);
-	checkErr(clError, "clEnqueueWriteBuffer");
-
 	// half sample the input depth maps into the pyramid levels
 	for (unsigned int i = 1; i < iterations.size(); ++i) {
-		halfSampleRobustImageKernel(make_uint2(computationSize.x / (int) pow(2, i - 1),
-						computationSize.y / (int) pow(2, i - 1)), e_delta * 3, 1, i);
+		halfSampleRobustImageKernel(ScaledDepth[i], ScaledDepth[i - 1],
+				make_uint2(computationSize.x / (int) pow(2, i - 1),
+						computationSize.y / (int) pow(2, i - 1)), e_delta * 3, 1);
 	}
 
 	// prepare the 3D information from the input depth maps
