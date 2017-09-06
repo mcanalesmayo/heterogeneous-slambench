@@ -45,6 +45,9 @@
 
 cl_kernel depth2vertex_ocl_kernel;
 
+cl_mem * ocl_ScaledDepth = NULL;
+cl_mem * ocl_inputVertex = NULL;
+
 // input once
 float * gaussian;
 
@@ -85,6 +88,17 @@ void clean() {
 
 void Kfusion::languageSpecificConstructor() {
 	init();
+
+	ocl_ScaledDepth = (cl_mem*) malloc(sizeof(cl_mem) * iterations.size());
+	for (unsigned int i = 0; i < iterations.size(); ++i) {
+		printf("%d * (%d * %d) / (%d) sizeof buffer: %d\n", sizeof(float), computationSize.x, computationSize.y, (int) pow(2, i), sizeof(float) * (computationSize.x * computationSize.y) / (int) pow(2, i));
+		ocl_ScaledDepth[i] = clCreateBuffer(contexts[0], CL_MEM_READ_WRITE, sizeof(float) * (computationSize.x * computationSize.y) / (int) pow(2, i), NULL, &clError);
+		checkErr(clError, "clCreateBuffer");
+		ocl_inputVertex[i] = clCreateBuffer(contexts[0], CL_MEM_READ_WRITE, sizeof(float3) * (computationSize.x * computationSize.y) / (int) pow(2, i), NULL, &clError);
+		checkErr(clError, "clCreateBuffer");
+	}
+
+	ocl_inputVertex = (cl_mem*) malloc(sizeof(cl_mem) * iterations.size());
 
 	depth2vertex_ocl_kernel = clCreateKernel(programs[0], "depth2vertexKernel", &clError);
 	checkErr(clError, "clCreateKernel");
@@ -135,6 +149,28 @@ void Kfusion::languageSpecificConstructor() {
 }
 
 Kfusion::~Kfusion() {
+
+	for (unsigned int i = 0; i < iterations.size(); ++i) {
+		if (ocl_ScaledDepth[i]) {
+			clError = clReleaseMemObject(ocl_ScaledDepth[i]);
+			checkErr(clError, "clReleaseMem");
+			ocl_ScaledDepth[i] = NULL;
+		}
+		if (ocl_inputVertex[i]) {
+			clError = clReleaseMemObject(ocl_inputVertex[i]);
+			checkErr(clError, "clReleaseMem");
+			ocl_inputVertex[i] = NULL;
+		}
+	}
+
+	if (ocl_ScaledDepth) {
+		free(ocl_ScaledDepth);
+		ocl_ScaledDepth = NULL;
+	}
+	if (ocl_inputVertex) {
+		free(ocl_inputVertex);
+		ocl_inputVertex = NULL;
+	}
 
 	RELEASE_KERNEL(depth2vertex_ocl_kernel);
 	depth2vertex_ocl_kernel = NULL;
@@ -215,24 +251,47 @@ void bilateralFilterKernel(float* out, const float* in, uint2 size,
 		TOCK("bilateralFilterKernel", size.x * size.y);
 }
 
-void depth2vertexKernel(float3* vertex, const float * depth, uint2 imageSize,
-		const Matrix4 invK) {
-	TICK();
-	unsigned int x, y;
-#pragma omp parallel for \
-         shared(vertex), private(x, y)
-	for (y = 0; y < imageSize.y; y++) {
-		for (x = 0; x < imageSize.x; x++) {
+void depth2vertexKernel(float3* vertex, const float * depth, uint2 imageSize, const Matrix4 invK) {
+	//TICK();
 
-			if (depth[x + y * imageSize.x] > 0) {
-				vertex[x + y * imageSize.x] = depth[x + y * imageSize.x]
-						* (rotate(invK, make_float3(x, y, 1.f)));
-			} else {
-				vertex[x + y * imageSize.x] = make_float3(0);
-			}
-		}
-	}
-	TOCK("depth2vertexKernel", imageSize.x * imageSize.y);
+	int arg = 0;
+	char errStr[20];
+
+	/* Write first buffer */
+	clError = clEnqueueWriteBuffer(cmd_queues[0][0], ocl_ScaledDepth[0], CL_TRUE, 0, imageSize.x * imageSize.y * sizeof(float), &ScaledDepth[0][0], 0, NULL, NULL);
+	checkErr(clError, "clEnqueueWriteBuffer");
+
+	clError = clSetKernelArg(depth2vertex_ocl_kernel, arg++, sizeof(cl_mem), &ocl_inputVertex[i]);
+	sprintf(errStr, "clSetKernelArg%d", arg);
+	checkErr(clError, errStr);
+	clError = clSetKernelArg(depth2vertex_ocl_kernel, arg++, sizeof(cl_uint2), &imageSize);
+	sprintf(errStr, "clSetKernelArg%d", arg);
+	checkErr(clError, errStr);
+	clError = clSetKernelArg(depth2vertex_ocl_kernel, arg++, sizeof(cl_mem), &ocl_ScaledDepth[i]);
+	sprintf(errStr, "clSetKernelArg%d", arg);
+	checkErr(clError, errStr);
+	clError = clSetKernelArg(depth2vertex_ocl_kernel, arg++, sizeof(cl_uint2), &imageSize);
+	sprintf(errStr, "clSetKernelArg%d", arg);
+	checkErr(clError, errStr);
+	clError = clSetKernelArg(depth2vertex_ocl_kernel, arg++, sizeof(float4), &(invK.data[0]));
+	sprintf(errStr, "clSetKernelArg%d", arg);
+	checkErr(clError, errStr);
+	clError = clSetKernelArg(depth2vertex_ocl_kernel, arg++, sizeof(float4), &(invK.data[1]));
+	sprintf(errStr, "clSetKernelArg%d", arg);
+	checkErr(clError, errStr);
+	clError = clSetKernelArg(depth2vertex_ocl_kernel, arg++, sizeof(float4), &(invK.data[2]));
+	sprintf(errStr, "clSetKernelArg%d", arg);
+	checkErr(clError, errStr);
+	clError = clSetKernelArg(depth2vertex_ocl_kernel, arg++, sizeof(float4), &(invK.data[3]));
+	sprintf(errStr, "clSetKernelArg%d", arg);
+	checkErr(clError, errStr);
+
+	size_t globalWorksize[2] = { imageSize.x, imageSize.y };
+
+	clError = clEnqueueNDRangeKernel(cmd_queues[0][0], depth2vertex_ocl_kernel, 2, NULL, globalWorksize, NULL, 0, NULL, NULL);
+	checkErr(clError, "clEnqueueNDRangeKernel");
+
+	//TOCK("depth2vertexKernel", imageSize.x * imageSize.y);
 }
 
 void vertex2normalKernel(float3 * out, const float3 * in, uint2 imageSize) {
