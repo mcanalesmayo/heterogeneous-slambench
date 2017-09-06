@@ -17,7 +17,7 @@
 #define STR(x) XSTR(x)
 
 #ifndef AOCX_PATH
-#define AOCX_PATH "/home/root/heterogeneous-slambench/kfusion/src/opencl/kernels_fpga_halfSample"
+#define AOCX_PATH "/home/root/heterogeneous-slambench/kfusion/src/opencl/kernels_fpga_depth2vertex"
 #endif
 
 cl_int             clError;
