@@ -90,6 +90,8 @@ void Kfusion::languageSpecificConstructor() {
 	init();
 
 	ocl_ScaledDepth = (cl_mem*) malloc(sizeof(cl_mem) * iterations.size());
+    ocl_inputVertex = (cl_mem*) malloc(sizeof(cl_mem) * iterations.size());
+
 	for (unsigned int i = 0; i < iterations.size(); ++i) {
 		printf("%d * (%d * %d) / (%d) sizeof buffer: %d\n", sizeof(float), computationSize.x, computationSize.y, (int) pow(2, i), sizeof(float) * (computationSize.x * computationSize.y) / (int) pow(2, i));
 		ocl_ScaledDepth[i] = clCreateBuffer(contexts[0], CL_MEM_READ_WRITE, sizeof(float) * (computationSize.x * computationSize.y) / (int) pow(2, i), NULL, &clError);
@@ -97,8 +99,6 @@ void Kfusion::languageSpecificConstructor() {
 		ocl_inputVertex[i] = clCreateBuffer(contexts[0], CL_MEM_READ_WRITE, sizeof(float3) * (computationSize.x * computationSize.y) / (int) pow(2, i), NULL, &clError);
 		checkErr(clError, "clCreateBuffer");
 	}
-
-	ocl_inputVertex = (cl_mem*) malloc(sizeof(cl_mem) * iterations.size());
 
 	depth2vertex_ocl_kernel = clCreateKernel(programs[0], "depth2vertexKernel", &clError);
 	checkErr(clError, "clCreateKernel");
@@ -251,15 +251,11 @@ void bilateralFilterKernel(float* out, const float* in, uint2 size,
 		TOCK("bilateralFilterKernel", size.x * size.y);
 }
 
-void depth2vertexKernel(float3* vertex, const float * depth, uint2 imageSize, const Matrix4 invK) {
+void depth2vertexKernel(uint2 imageSize, const Matrix4 invK, int i) {
 	//TICK();
 
 	int arg = 0;
 	char errStr[20];
-
-	/* Write first buffer */
-	clError = clEnqueueWriteBuffer(cmd_queues[0][0], ocl_ScaledDepth[0], CL_TRUE, 0, imageSize.x * imageSize.y * sizeof(float), &ScaledDepth[0][0], 0, NULL, NULL);
-	checkErr(clError, "clEnqueueWriteBuffer");
 
 	clError = clSetKernelArg(depth2vertex_ocl_kernel, arg++, sizeof(cl_mem), &ocl_inputVertex[i]);
 	sprintf(errStr, "clSetKernelArg%d", arg);
@@ -996,19 +992,28 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 	if (frame % tracking_rate != 0)
 		return false;
 
+    clError = clEnqueueWriteBuffer(cmd_queues[0][0], ocl_ScaledDepth[0], CL_TRUE, 0, computationSize.x * computationSize.y * sizeof(float), &ScaledDepth[0][0], 0, NULL, NULL);
+    checkErr(clError, "clEnqueueWriteBuffer");
+
 	// half sample the input depth maps into the pyramid levels
 	for (unsigned int i = 1; i < iterations.size(); ++i) {
 		halfSampleRobustImageKernel(ScaledDepth[i], ScaledDepth[i - 1],
 				make_uint2(computationSize.x / (int) pow(2, i - 1),
 						computationSize.y / (int) pow(2, i - 1)), e_delta * 3, 1);
+
+        clError = clEnqueueWriteBuffer(cmd_queues[0][0], ocl_ScaledDepth[i], CL_TRUE, 0, sizeof(float) * (computationSize.x * computationSize.y) / (int) pow(2, i), &ScaledDepth[i][0], 0, NULL, NULL);
+        checkErr(clError, "clEnqueueWriteBuffer");
 	}
 
 	// prepare the 3D information from the input depth maps
 	uint2 localimagesize = computationSize;
 	for (unsigned int i = 0; i < iterations.size(); ++i) {
 		Matrix4 invK = getInverseCameraMatrix(k / float(1 << i));
-		depth2vertexKernel(inputVertex[i], ScaledDepth[i], localimagesize,
-				invK);
+		depth2vertexKernel(localimagesize, invK, i);
+
+        clError = clEnqueueReadBuffer(cmd_queues[0][0], ocl_inputVertex[i], CL_TRUE, 0, sizeof(float3) * (computationSize.x * computationSize.y) / (int) pow(2, i), &inputVertex[i][0], 0, NULL, NULL);
+        checkErr(clError, "clEnqueueWriteBuffer");
+
 		vertex2normalKernel(inputNormal[i], inputVertex[i], localimagesize);
 		localimagesize = make_uint2(localimagesize.x / 2, localimagesize.y / 2);
 	}
