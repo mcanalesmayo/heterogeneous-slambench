@@ -19,7 +19,7 @@ void initVolumeKernel(Volume volume);
 
 void bilateralFilterKernel(float* out, const float* in, uint2 inSize, const float * gaussian, float e_d, int r);
 
-void depth2vertexKernel(uint2 imageSize, const Matrix4 invK, int i);
+void depth2vertexKernel(float3* vertex, const float * depth, uint2 imageSize, const Matrix4 invK);
 
 void reduceKernel(float * out, TrackData* J, const uint2 Jsize, const uint2 size);
 
@@ -29,7 +29,7 @@ void trackKernel(TrackData* output, const float3* inVertex,
 		const Matrix4 view, const float dist_threshold,
 		const float normal_threshold);
 
-void vertex2normalKernel(float3 * out, const float3 * in, uint2 imageSize);
+void vertex2normalKernel(uint2 imageSize, int i);
 
 void mm2metersKernel(float * out, uint2 outSize, const ushort * in, uint2 inSize);
 
