@@ -89,8 +89,8 @@ void clean() {
 void Kfusion::languageSpecificConstructor() {
 	init();
 
-	ocl_inputNormal = (cl_mem*) malloc(sizeof(cl_mem) * iterations.size());
     ocl_inputVertex = (cl_mem*) malloc(sizeof(cl_mem) * iterations.size());
+    ocl_inputNormal = (cl_mem*) malloc(sizeof(cl_mem) * iterations.size());
 
 	for (unsigned int i = 0; i < iterations.size(); ++i) {
 		printf("%d * (%d * %d) / (%d) sizeof buffer: %d\n", sizeof(float), computationSize.x, computationSize.y, (int) pow(2, i), sizeof(float) * (computationSize.x * computationSize.y) / (int) pow(2, i));
@@ -100,7 +100,7 @@ void Kfusion::languageSpecificConstructor() {
         checkErr(clError, "clCreateBuffer");
 	}
 
-	vertex2normal_ocl_kernel = clCreateKernel(programs[0], "depth2vertexKernel", &clError);
+	vertex2normal_ocl_kernel = clCreateKernel(programs[0], "vertex2normalKernel", &clError);
 	checkErr(clError, "clCreateKernel");
 
 	if (getenv("KERNEL_TIMINGS"))
