@@ -980,7 +980,7 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 	uint2 localimagesize = computationSize;
 	for (unsigned int i = 0; i < iterations.size(); ++i) {
 		Matrix4 invK = getInverseCameraMatrix(k / float(1 << i));
-		depth2vertexKernel(inputVertex[i], ScaledDepth[i], localimagesize, invK, i);
+		depth2vertexKernel(inputVertex[i], ScaledDepth[i], localimagesize, invK);
 
         clError = clEnqueueWriteBuffer(cmd_queues[0][0], ocl_inputVertex[i], CL_TRUE, 0, sizeof(float3) * (computationSize.x * computationSize.y) / (int) pow(2, i), &inputVertex[i][0], 0, NULL, NULL);
         checkErr(clError, "clEnqueueWriteBuffer");
