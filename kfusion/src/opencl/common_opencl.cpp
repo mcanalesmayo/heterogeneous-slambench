@@ -17,7 +17,7 @@
 #define STR(x) XSTR(x)
 
 #ifndef AOCX_PATH
-#define AOCX_PATH "/home/root/heterogeneous-slambench/kfusion/src/opencl/kernels_fpga_vertex2normal"
+#define AOCX_PATH "/home/root/heterogeneous-slambench/kfusion/src/opencl/kernels_fpga_bilateralFilter"
 #endif
 
 cl_int             clError;
