@@ -244,7 +244,7 @@ void bilateralFilterKernel(float* out, const float* in, uint2 size,
 	clError = clEnqueueNDRangeKernel(cmd_queues[0][0], bilateralFilter_ocl_kernel, 2, NULL, globalWorksize, NULL, 0, NULL, NULL);
 	checkErr(clError, "clEnqueueNDRangeKernel");
 
-	clError = clEnqueueReadBuffer(cmd_queues[0][0], ocl_ScaledDepth, CL_TRUE, 0, size.x * size.y * sizeof(float), &ScaledDepth[0], 0, NULL, NULL);
+	clError = clEnqueueReadBuffer(cmd_queues[0][0], ocl_ScaledDepth, CL_TRUE, 0, size.x * size.y * sizeof(float), &ScaledDepth[0][0], 0, NULL, NULL);
 	checkErr(clError, "clEnqueueWriteBuffer");
 	//TOCK("bilateralFilterKernel", size.x * size.y);
 }
