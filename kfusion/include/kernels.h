@@ -39,7 +39,7 @@ bool updatePoseKernel(Matrix4 & pose, const float * output, float icp_threshold)
 
 bool checkPoseKernel(Matrix4 & pose, Matrix4 oldPose, const float * output, uint2 imageSize, float track_threshold);
 
-void integrateKernel(Volume vol, const float* depth, uint2 imageSize, const Matrix4 invTrack, const Matrix4 K, const float mu, const float maxweight);
+void integrateKernel(Volume vol, const float* depth, uint2 imageSize, const Matrix4 invTrack, const Matrix4 K, const float mu, const float maxweight, uint2 computationSize);
 
 void raycastKernel(float3* vertex, float3* normal, uint2 inputSize,
 		const Volume integration, const Matrix4 view, const float nearPlane,

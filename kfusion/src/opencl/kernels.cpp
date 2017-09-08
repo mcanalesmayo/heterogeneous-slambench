@@ -685,16 +685,16 @@ void integrateKernel(Volume vol, const float* depth, uint2 depthSize,
 	clError = clEnqueueWriteBuffer(cmd_queues[0][0], ocl_FloatDepth, CL_TRUE, 0, sizeof(float) * computationSize.x * computationSize.y, floatDepth, 0, NULL, NULL);
 	checkErr(clError, "clEnqueueWriteBuffer");
 
-	clError = clEnqueueWriteBuffer(cmd_queues[0][0], ocl_volume_data, CL_TRUE, 0, volumeResolution.x * volumeResolution.y * volumeResolution.z * sizeof(short2), volume.data, 0, NULL, NULL);
+	clError = clEnqueueWriteBuffer(cmd_queues[0][0], ocl_volume_data, CL_TRUE, 0, vol.size.x * vol.size.y * vol.size.z * sizeof(short2), volume.data, 0, NULL, NULL);
 	checkErr(clError, "clEnqueueWriteBuffer");
 
 	clError = clSetKernelArg(integrate_ocl_kernel, arg++, sizeof(cl_mem), (void*) &ocl_volume_data);
 	sprintf(errStr, "clSetKernelArg%d", arg);
 	checkErr(clError, errStr);
-	clError = clSetKernelArg(integrate_ocl_kernel, arg++, sizeof(cl_uint3), (void*) &volumeResolution);
+	clError = clSetKernelArg(integrate_ocl_kernel, arg++, sizeof(cl_uint3), (void*) &vol.size);
 	sprintf(errStr, "clSetKernelArg%d", arg);
 	checkErr(clError, errStr);
-	clError = clSetKernelArg(integrate_ocl_kernel, arg++, sizeof(cl_float3), (void*) &volumeDimensions);
+	clError = clSetKernelArg(integrate_ocl_kernel, arg++, sizeof(cl_float3), (void*) &vol.dim);
 	sprintf(errStr, "clSetKernelArg%d", arg);
 	checkErr(clError, errStr);
 	clError = clSetKernelArg(integrate_ocl_kernel, arg++, sizeof(cl_mem), (void*) &ocl_FloatDepth);
