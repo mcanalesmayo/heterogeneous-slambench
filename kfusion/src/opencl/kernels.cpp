@@ -45,8 +45,9 @@
 
 cl_kernel bilateralFilterKernel;
 
-cl_mem * ocl_FloatDepth = NULL;
-cl_mem * ocl_ScaledDepth = NULL;
+cl_mem ocl_FloatDepth = NULL;
+cl_mem ocl_ScaledDepth = NULL;
+cl_mem ocl_gaussian = NULL;
 
 // input once
 float * gaussian;
@@ -88,9 +89,6 @@ void clean() {
 
 void Kfusion::languageSpecificConstructor() {
 	init();
-
-    ocl_FloatDepth = (cl_mem*) malloc(sizeof(cl_mem) * iterations.size());
-    ocl_ScaledDepth = (cl_mem*) malloc(sizeof(cl_mem));
 
 	ocl_FloatDepth = clCreateBuffer(contexts[0], CL_MEM_READ_WRITE, sizeof(float) * computationSize.x * computationSize.y, NULL, &clError);
 	checkErr(clError, "clCreateBuffer");
@@ -163,6 +161,11 @@ Kfusion::~Kfusion() {
         checkErr(clError, "clReleaseMem");
         ocl_ScaledDepth = NULL;
     }
+    if (ocl_gaussian) {
+	 	clError = clReleaseMemObject(ocl_gaussian);
+		checkErr(clError, "clReleaseMem");
+		ocl_gaussian = NULL;
+	}
 
 	if (ocl_FloatDepth) {
 		free(ocl_FloatDepth);
