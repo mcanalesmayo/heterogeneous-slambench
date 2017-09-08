@@ -29,7 +29,7 @@ void trackKernel(TrackData* output, const float3* inVertex,
 		const Matrix4 view, const float dist_threshold,
 		const float normal_threshold);
 
-void vertex2normalKernel(uint2 imageSize, int i);
+void vertex2normalKernel(float3 * out, const float3 * in, uint2 imageSize);
 
 void mm2metersKernel(float * out, uint2 outSize, const ushort * in, uint2 inSize);
 
