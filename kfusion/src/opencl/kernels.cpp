@@ -741,12 +741,12 @@ void integrateKernel(Volume vol, const float* depth, uint2 depthSize,
 	sprintf(errStr, "clSetKernelArg%d", arg);
 	checkErr(clError, errStr);
 
-	size_t globalWorksize[2] = { volumeResolution.x, volumeResolution.y };
+	size_t globalWorksize[2] = { vol.size.x, vol.size.y };
 
 	clError = clEnqueueNDRangeKernel(cmd_queues[0][0], integrate_ocl_kernel, 2, NULL, globalWorksize, NULL, 0, NULL, NULL);
 	checkErr(clError, "clEnqueueNDRangeKernel");
 
-	clError = clEnqueueReadBuffer(cmd_queues[0][0], ocl_volume_data, CL_TRUE, 0, volumeResolution.x * volumeResolution.y * volumeResolution.z * sizeof(short2), volume.data, 0, NULL, NULL);
+	clError = clEnqueueReadBuffer(cmd_queues[0][0], ocl_volume_data, CL_TRUE, 0, vol.size.x * vol.size.y * vol.size.z * sizeof(short2), volume.data, 0, NULL, NULL);
 	checkErr(clError, "clEnqueueReadBuffer");
 }
 float4 raycast(const Volume volume, const uint2 pos, const Matrix4 view,
