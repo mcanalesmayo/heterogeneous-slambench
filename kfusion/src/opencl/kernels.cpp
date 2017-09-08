@@ -220,6 +220,8 @@ void bilateralFilterKernel(float* out, const float* in, uint2 size,
 	int arg = 0;
 	char errStr[20];
 
+	size_t globalWorksize[2] = { outSize.x, outSize.y };
+
 	clError = clEnqueueWriteBuffer(cmd_queues[0][0], ocl_FloatDepth, CL_TRUE, 0, computationSize.x * computationSize.y * sizeof(float), floatDepth, 0, NULL, NULL);
 	checkErr(clError, "clEnqueueWriteBuffer");
 
