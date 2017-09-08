@@ -673,10 +673,10 @@ void halfSampleRobustImageKernel(float* out, const float* in, uint2 inSize,
 
 void integrateKernel(Volume vol, const float* depth, uint2 depthSize,
 		const Matrix4 invTrack, const Matrix4 K, const float mu,
-		const float maxweight) {
+		const float maxweight, uint2 computationSize) {
 
 	//uint3 pix = make_uint3(thr2pos2());
-	const float3 delta = rotate(invTrack, make_float3(0, 0, volumeDimensions.z / volumeResolution.z));
+	const float3 delta = rotate(invTrack, make_float3(0, 0, vol.dim.z / vol.size.z));
 	const float3 cameraDelta = rotate(K, delta);
 
 	int arg = 0;
@@ -1070,7 +1070,7 @@ bool Kfusion::integration(float4 k, uint integration_rate, float mu,
 
 	if ((doIntegrate && ((frame % integration_rate) == 0)) || (frame <= 3)) {
 		integrateKernel(volume, floatDepth, computationSize, inverse(pose),
-				getCameraMatrix(k), mu, maxweight);
+				getCameraMatrix(k), mu, maxweight, computationSize);
 		doIntegrate = true;
 	} else {
 		doIntegrate = false;
