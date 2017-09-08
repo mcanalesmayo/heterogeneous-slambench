@@ -43,7 +43,7 @@
 
 #endif
 
-cl_kernel bilateralFilterKernel;
+cl_kernel bilateralFilter_ocl_kernel;
 
 cl_mem ocl_FloatDepth = NULL;
 cl_mem ocl_ScaledDepth = NULL;
@@ -95,7 +95,7 @@ void Kfusion::languageSpecificConstructor() {
 	ocl_ScaledDepth = clCreateBuffer(contexts[0], CL_MEM_READ_WRITE, sizeof(float) * computationSize.x * computationSize.y, NULL, &clError);
 	checkErr(clError, "clCreateBuffer");
 
-	bilateralFilterKernel = clCreateKernel(programs[0], "bilateralFilterKernel", &clError);
+	bilateralFilter_ocl_kernel = clCreateKernel(programs[0], "bilateralFilterKernel", &clError);
 	checkErr(clError, "clCreateKernel");
 
 	if (getenv("KERNEL_TIMINGS"))
@@ -176,8 +176,8 @@ Kfusion::~Kfusion() {
 		ocl_ScaledDepth = NULL;
 	}
 
-	RELEASE_KERNEL(bilateralFilterKernel);
-	bilateralFilterKernel = NULL;
+	RELEASE_KERNEL(bilateralFilter_ocl_kernel);
+	bilateralFilter_ocl_kernel = NULL;
 
 	free(floatDepth);
 	free(trackingResult);
@@ -239,7 +239,7 @@ void bilateralFilterKernel(float* out, const float* in, uint2 size,
 	sprintf(errStr, "clSetKernelArg%d", arg);
 	checkErr(clError, errStr);
 
-	clError = clEnqueueNDRangeKernel(cmd_queues[1][0], bilateralFilter_ocl_kernel, 2, NULL, globalWorksize, NULL, 0, NULL, NULL);
+	clError = clEnqueueNDRangeKernel(cmd_queues[0][0], bilateralFilter_ocl_kernel, 2, NULL, globalWorksize, NULL, 0, NULL, NULL);
 	checkErr(clError, "clEnqueueNDRangeKernel");
 
 	clError = clEnqueueReadBuffer(cmd_queues[0][0], ocl_ScaledDepth, CL_TRUE, 0, computationSize.x * computationSize.y * sizeof(float), &ScaledDepth[0], 0, NULL, NULL);
