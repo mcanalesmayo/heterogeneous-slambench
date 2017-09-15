@@ -490,7 +490,6 @@ void Kfusion::dumpVolume(const char* filename) {
     clEnqueueReadBuffer(cmd_queues[1][0], ocl_volume_dataGPU, CL_TRUE, 0,
             volumeResolution.x * volumeResolution.y * volumeResolution.z
                     * sizeof(short2), volume_data, 0, NULL, NULL);
-
     std::cout << "Dumping the volumetric representation on file: " << filename
             << std::endl;
 
