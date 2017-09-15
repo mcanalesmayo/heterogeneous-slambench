@@ -28,7 +28,7 @@ cl_mem ocl_vertexGPU = NULL;
 float3 * normal = NULL;
 cl_mem ocl_normalFPGA = NULL;
 cl_mem ocl_normalGPU = NULL;
-short2 * volume_data = NULL;
+short2 * volumeData = NULL;
 cl_mem ocl_volume_dataFPGA = NULL;
 cl_mem ocl_volume_dataGPU = NULL;
 cl_mem ocl_depth_buffer = NULL;
@@ -142,7 +142,7 @@ void Kfusion::languageSpecificConstructor() {
     initVolume_ocl_kernel = clCreateKernel(programs[1], "initVolumeKernel", &clError);
     checkErr(clError, "clCreateKernel");
 
-    volume_data = (short2 *) malloc(sizeof(short2) * volumeResolution.x * volumeResolution.y * volumeResolution.z);
+    volumeData = (short2 *) malloc(sizeof(short2) * volumeResolution.x * volumeResolution.y * volumeResolution.z);
     ocl_volume_dataFPGA = clCreateBuffer(contexts[0], CL_MEM_READ_WRITE, sizeof(short2) * volumeResolution.x * volumeResolution.y * volumeResolution.z, NULL, &clError);
     checkErr(clError, "clCreateBuffer");
     ocl_volume_dataGPU = clCreateBuffer(contexts[1], CL_MEM_READ_WRITE, sizeof(short2) * volumeResolution.x * volumeResolution.y * volumeResolution.z, NULL, &clError);
@@ -258,9 +258,9 @@ Kfusion::~Kfusion() {
         checkErr(clError, "clReleaseMem");
         ocl_gaussian = NULL;
     }
-    if (volume_data) {
-        free(volume_data);
-        volume_data = NULL;
+    if (volumeData) {
+        free(volumeData);
+        volumeData = NULL;
     }
     if (ocl_volume_dataFPGA) {
         clError = clReleaseMemObject(ocl_volume_dataFPGA);
@@ -833,7 +833,7 @@ bool Kfusion::raycasting(float4 k, float mu, uint frame) {
 
         size_t RaycastglobalWorksize[2] = { computationSize.x, computationSize.y };
 
-        clError = clEnqueueNDRangeKernel(cmd_queues[1][0], raycast_ocl_kernel, 2, NULL, RaycastglobalWorksize, NULL, 0, NULL, NULL);
+        clError = clEnqueueNDRangeKernel(cmd_queues[0][0], raycast_ocl_kernel, 2, NULL, RaycastglobalWorksize, NULL, 0, NULL, NULL);
         checkErr(clError, "clEnqueueNDRangeKernel");
 
         /* Transfer from FPGA to GPU */
@@ -896,7 +896,6 @@ bool Kfusion::integration(float4 k, uint integration_rate, float mu, uint frame)
         clError = clSetKernelArg(integrate_ocl_kernel, arg++, sizeof(cl_float), (void*) &maxweight);
         sprintf(errStr, "clSetKernelArg%d", arg);
         checkErr(clError, errStr);
-
         clError = clSetKernelArg(integrate_ocl_kernel, arg++, sizeof(cl_float3), (void*) &delta);
         sprintf(errStr, "clSetKernelArg%d", arg);
         checkErr(clError, errStr);
@@ -909,9 +908,9 @@ bool Kfusion::integration(float4 k, uint integration_rate, float mu, uint frame)
         clError = clEnqueueNDRangeKernel(cmd_queues[1][0], integrate_ocl_kernel, 2, NULL, globalWorksize, NULL, 0, NULL, NULL);
 
         /* Transfer results from GPU to FPGA */
-        clError = clEnqueueReadBuffer(cmd_queues[0][0], ocl_volume_dataGPU, CL_TRUE, 0, sizeof(short2) * volumeResolution.x * volumeResolution.y * volumeResolution.z, volume_data, 0, NULL, NULL );
+        clError = clEnqueueReadBuffer(cmd_queues[1][0], ocl_volume_dataGPU, CL_TRUE, 0, sizeof(short2) * volumeResolution.x * volumeResolution.y * volumeResolution.z, volumeData, 0, NULL, NULL );
         checkErr(clError, "clEnqueueReadBuffer");
-        clError = clEnqueueWriteBuffer(cmd_queues[1][0], ocl_volume_dataFPGA, CL_TRUE, 0, sizeof(short2) * volumeResolution.x * volumeResolution.y * volumeResolution.z, volume_data, 0, NULL, NULL );
+        clError = clEnqueueWriteBuffer(cmd_queues[0][0], ocl_volume_dataFPGA, CL_TRUE, 0, sizeof(short2) * volumeResolution.x * volumeResolution.y * volumeResolution.z, volumeData, 0, NULL, NULL );
         checkErr(clError, "clEnqueueWriteBuffer");
         /* End of transfer */
     } else {
