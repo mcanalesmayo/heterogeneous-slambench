@@ -43,6 +43,14 @@
 
 #endif
 
+cl_kernel track_ocl_kernel;
+
+cl_mem ocl_trackingResult = NULL;
+cl_mem * ocl_inputVertex = NULL;
+cl_mem * ocl_inputNormal = NULL;
+cl_mem ocl_vertex = NULL;
+cl_mem ocl_normal = NULL;
+
 // input once
 float * gaussian;
 
@@ -83,6 +91,26 @@ void clean() {
 
 void Kfusion::languageSpecificConstructor() {
 	init();
+
+    track_ocl_kernel = clCreateKernel(programs[0], "trackKernel", &clError);
+    checkErr(clError, "clCreateKernel");
+
+    ocl_inputVertex = (cl_mem*) malloc(sizeof(cl_mem) * iterations.size());
+    ocl_inputNormal = (cl_mem*) malloc(sizeof(cl_mem) * iterations.size());
+
+    for (unsigned int i = 0; i < iterations.size(); ++i) {
+        ocl_inputVertex[i] = clCreateBuffer(contexts[0], CL_MEM_READ_WRITE, sizeof(float3) * (computationSize.x * computationSize.y) / (int) pow(2, i), NULL, &clError);
+        checkErr(clError, "clCreateBuffer");
+        ocl_inputNormal[i] = clCreateBuffer(contexts[0], CL_MEM_READ_WRITE, sizeof(float3) * (computationSize.x * computationSize.y) / (int) pow(2, i), NULL, &clError);
+        checkErr(clError, "clCreateBuffer");
+    }
+
+    ocl_vertex = clCreateBuffer(contexts[0], CL_MEM_READ_WRITE, sizeof(float3) * computationSize.x * computationSize.y, NULL, &clError);
+    checkErr(clError, "clCreateBuffer");
+    ocl_normal = clCreateBuffer(contexts[0], CL_MEM_READ_WRITE, sizeof(float3) * computationSize.x * computationSize.y, NULL, &clError);
+    checkErr(clError, "clCreateBuffer");
+    ocl_trackingResult = clCreateBuffer(contexts[0], CL_MEM_READ_WRITE, sizeof(TrackData) * computationSize.x * computationSize.y, NULL, &clError);
+    checkErr(clError, "clCreateBuffer");
 
 	if (getenv("KERNEL_TIMINGS"))
 		print_kernel_timing = true;
@@ -131,6 +159,44 @@ void Kfusion::languageSpecificConstructor() {
 }
 
 Kfusion::~Kfusion() {
+    for (unsigned int i = 0; i < iterations.size(); ++i) {
+        if (ocl_inputVertex[i]) {
+            clError = clReleaseMemObject(ocl_inputVertex[i]);
+            checkErr(clError, "clReleaseMem");
+            ocl_inputVertex[i] = NULL;
+        }
+        if (ocl_inputNormal[i]) {
+            clError = clReleaseMemObject(ocl_inputNormal[i]);
+            checkErr(clError, "clReleaseMem");
+            ocl_inputNormal[i] = NULL;
+        }
+    }
+
+    if (ocl_inputVertex) {
+        free(ocl_inputVertex);
+        ocl_inputVertex = NULL;
+    }
+    if (ocl_inputNormal) {
+        free(ocl_inputNormal);
+        ocl_inputNormal = NULL;
+    }
+
+    if (ocl_vertex) {
+        clError = clReleaseMemObject(ocl_vertex);
+        checkErr(clError, "clReleaseMem");
+        ocl_vertex = NULL;
+    }
+    if (ocl_normal) {
+        clError = clReleaseMemObject(ocl_normal);
+        checkErr(clError, "clReleaseMem");
+        ocl_normal = NULL;
+    }
+    if (ocl_trackingResult) {
+        clError = clReleaseMemObject(ocl_trackingResult);
+        checkErr(clError, "clReleaseMem");
+        ocl_trackingResult = NULL;
+    }
+
 	free(floatDepth);
 	free(trackingResult);
 
@@ -147,6 +213,9 @@ Kfusion::~Kfusion() {
 	free(vertex);
 	free(normal);
 	free(gaussian);
+
+    RELEASE_KERNEL(track_ocl_kernel);
+    track_ocl_kernel = NULL;
 
 	volume.release();
 }
@@ -954,10 +1023,86 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 				computationSize.x / (int) pow(2, level),
 				computationSize.y / (int) pow(2, level));
 		for (int i = 0; i < iterations[level]; ++i) {
+            int arg = 0;
+            char errStr[20];
 
-			trackKernel(trackingResult, inputVertex[level], inputNormal[level],
-					localimagesize, vertex, normal, computationSize, pose,
-					projectReference, dist_threshold, normal_threshold);
+            clError = clEnqueueWriteBuffer(cmd_queues[0][0], ocl_inputVertex[level], CL_TRUE, 0, sizeof(float3) * (computationSize.x * computationSize.y) / (int) pow(2, level), inputVertex[level], 0, NULL, NULL);
+            clError = clEnqueueWriteBuffer(cmd_queues[0][0], ocl_inputNormal[level], CL_TRUE, 0, sizeof(float3) * (computationSize.x * computationSize.y) / (int) pow(2, level), inputNormal[level], 0, NULL, NULL);
+            clError = clEnqueueWriteBuffer(cmd_queues[0][0], ocl_vertex, CL_TRUE, 0, sizeof(float3) * (computationSize.x * computationSize.y), vertex, 0, NULL, NULL);
+            clError = clEnqueueWriteBuffer(cmd_queues[0][0], ocl_normal, CL_TRUE, 0, sizeof(float3) * (computationSize.x * computationSize.y), normal, 0, NULL, NULL);
+
+
+            clError = clSetKernelArg(track_ocl_kernel, arg++, sizeof(cl_mem), &ocl_trackingResult);
+            sprintf(errStr, "clSetKernelArg%d", arg);
+            checkErr(clError, errStr);
+            clError = clSetKernelArg(track_ocl_kernel, arg++, sizeof(cl_uint2), &computationSize);
+            sprintf(errStr, "clSetKernelArg%d", arg);
+            checkErr(clError, errStr);
+            clError = clSetKernelArg(track_ocl_kernel, arg++, sizeof(cl_mem), &ocl_inputVertex[level]);
+            sprintf(errStr, "clSetKernelArg%d", arg);
+            checkErr(clError, errStr);
+            clError = clSetKernelArg(track_ocl_kernel, arg++, sizeof(cl_uint2), &localimagesize);
+            sprintf(errStr, "clSetKernelArg%d", arg);
+            checkErr(clError, errStr);
+            clError = clSetKernelArg(track_ocl_kernel, arg++, sizeof(cl_mem), &ocl_inputNormal[level]);
+            sprintf(errStr, "clSetKernelArg%d", arg);
+            checkErr(clError, errStr);
+            clError = clSetKernelArg(track_ocl_kernel, arg++, sizeof(cl_uint2), &localimagesize);
+            sprintf(errStr, "clSetKernelArg%d", arg);
+            checkErr(clError, errStr);
+            clError = clSetKernelArg(track_ocl_kernel, arg++, sizeof(cl_mem), &ocl_vertex);
+            sprintf(errStr, "clSetKernelArg%d", arg);
+            checkErr(clError, errStr);
+            clError = clSetKernelArg(track_ocl_kernel, arg++, sizeof(cl_uint2), &computationSize);
+            sprintf(errStr, "clSetKernelArg%d", arg);
+            checkErr(clError, errStr);
+            clError = clSetKernelArg(track_ocl_kernel, arg++, sizeof(cl_mem), &ocl_normal);
+            sprintf(errStr, "clSetKernelArg%d", arg);
+            checkErr(clError, errStr);
+            clError = clSetKernelArg(track_ocl_kernel, arg++, sizeof(cl_uint2), &computationSize);
+            sprintf(errStr, "clSetKernelArg%d", arg);
+            checkErr(clError, errStr);
+            clError = clSetKernelArg(track_ocl_kernel, arg++, sizeof(cl_float4), &(pose.data[0]));
+            sprintf(errStr, "clSetKernelArg%d", arg);
+            checkErr(clError, errStr);
+            clError = clSetKernelArg(track_ocl_kernel, arg++, sizeof(cl_float4), &(pose.data[1]));
+            sprintf(errStr, "clSetKernelArg%d", arg);
+            checkErr(clError, errStr);
+            clError = clSetKernelArg(track_ocl_kernel, arg++, sizeof(cl_float4), &(pose.data[2]));
+            sprintf(errStr, "clSetKernelArg%d", arg);
+            checkErr(clError, errStr);
+            clError = clSetKernelArg(track_ocl_kernel, arg++, sizeof(cl_float4), &(pose.data[3]));
+            sprintf(errStr, "clSetKernelArg%d", arg);
+            checkErr(clError, errStr);
+            clError = clSetKernelArg(track_ocl_kernel, arg++, sizeof(cl_float4), &(projectReference.data[0]));
+            sprintf(errStr, "clSetKernelArg%d", arg);
+            checkErr(clError, errStr);
+            clError = clSetKernelArg(track_ocl_kernel, arg++, sizeof(cl_float4), &(projectReference.data[1]));
+            sprintf(errStr, "clSetKernelArg%d", arg);
+            checkErr(clError, errStr);
+            clError = clSetKernelArg(track_ocl_kernel, arg++, sizeof(cl_float4), &(projectReference.data[2]));
+            sprintf(errStr, "clSetKernelArg%d", arg);
+            checkErr(clError, errStr);
+            clError = clSetKernelArg(track_ocl_kernel, arg++, sizeof(cl_float4), &(projectReference.data[3]));
+            sprintf(errStr, "clSetKernelArg%d", arg);
+            checkErr(clError, errStr);
+            clError = clSetKernelArg(track_ocl_kernel, arg++, sizeof(cl_float), &dist_threshold);
+            sprintf(errStr, "clSetKernelArg%d", arg);
+            checkErr(clError, errStr);
+            clError = clSetKernelArg(track_ocl_kernel, arg++, sizeof(cl_float), &normal_threshold);
+            sprintf(errStr, "clSetKernelArg%d", arg);
+            checkErr(clError, errStr);
+
+            size_t globalWorksize[2] = { localimagesize.x, localimagesize.y };
+
+            clError = clEnqueueNDRangeKernel(cmd_queues[0][0], track_ocl_kernel, 2, NULL, globalWorksize, NULL, 0, NULL, NULL);
+            checkErr(clError, "clEnqueueNDRangeKernel");
+
+            clEnqueueReadBuffer(cmd_queues[0][0], ocl_trackingResult, CL_TRUE, 0, sizeof(TrackData) * (computationSize.x * computationSize.y), trackingResult, 0, NULL, NULL);
+
+			// trackKernel(trackingResult, inputVertex[level], inputNormal[level],
+			// 		localimagesize, vertex, normal, computationSize, pose,
+			// 		projectReference, dist_threshold, normal_threshold);
 
 			reduceKernel(reductionoutput, trackingResult, computationSize,
 					localimagesize);
