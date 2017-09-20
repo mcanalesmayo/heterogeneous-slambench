@@ -43,6 +43,13 @@
 
 #endif
 
+cl_kernel renderDepth_ocl_kernel;
+
+cl_mem ocl_FloatDepth = NULL;
+cl_mem ocl_output_render_buffer = NULL;
+
+uint2 outputImageSizeBkp = make_uint2(0, 0);
+
 // input once
 float * gaussian;
 
@@ -83,6 +90,12 @@ void clean() {
 
 void Kfusion::languageSpecificConstructor() {
 	init();
+
+    renderDepth_ocl_kernel = clCreateKernel(programs[0], "renderDepthKernel", &clError);
+    checkErr(clError, "clCreateKernel");
+
+    ocl_FloatDepth = clCreateBuffer(contexts[0], CL_MEM_READ_WRITE, sizeof(float) * computationSize.x * computationSize.y, NULL, &clError);
+    checkErr(clError, "clCreateBuffer");
 
 	if (getenv("KERNEL_TIMINGS"))
 		print_kernel_timing = true;
@@ -131,6 +144,18 @@ void Kfusion::languageSpecificConstructor() {
 }
 
 Kfusion::~Kfusion() {
+    if (ocl_FloatDepth) {
+        clError = clReleaseMemObject(ocl_FloatDepth);
+        checkErr(clError, "clReleaseMem");
+        ocl_FloatDepth = NULL;
+    }
+
+    if(ocl_output_render_buffer) {
+        clError = clReleaseMemObject(ocl_output_render_buffer);
+        checkErr(clError, "clReleaseMem");
+        ocl_output_render_buffer = NULL;
+    }
+
 	free(floatDepth);
 	free(trackingResult);
 
@@ -147,6 +172,11 @@ Kfusion::~Kfusion() {
 	free(vertex);
 	free(normal);
 	free(gaussian);
+
+    RELEASE_KERNEL(renderDepth_ocl_kernel);
+    renderDepth_ocl_kernel = NULL;
+
+    outputImageSizeBkp = make_uint2(0, 0);
 
 	volume.release();
 }
@@ -1044,7 +1074,38 @@ void Kfusion::renderTrack(uchar4 * out, uint2 outputSize) {
 }
 
 void Kfusion::renderDepth(uchar4 * out, uint2 outputSize) {
-	renderDepthKernel(out, floatDepth, outputSize, nearPlane, farPlane);
+	//renderDepthKernel(out, floatDepth, outputSize, nearPlane, farPlane);
+
+    // Create render opencl buffer if needed
+    if(outputImageSizeBkp.x < outputSize.x || outputImageSizeBkp.y < outputSize.y || ocl_output_render_buffer == NULL) 
+    {
+        outputImageSizeBkp = make_uint2(outputSize.x, outputSize.y);
+        if(ocl_output_render_buffer != NULL){
+            std::cout << "Release" << std::endl;
+            clError = clReleaseMemObject(ocl_output_render_buffer);
+            checkErr( clError, "clReleaseMemObject");
+        }
+        ocl_output_render_buffer = clCreateBuffer(contexts[0], CL_MEM_WRITE_ONLY, outputSize.x * outputSize.y * sizeof(uchar4), NULL , &clError);
+        checkErr(clError, "clCreateBuffer output" );
+    }
+
+    clEnqueueWriteBuffer(cmd_queues[0][0], ocl_FloatDepth, CL_TRUE, 0, computationSize.x * computationSize.y * sizeof(float), floatDepth, 0, NULL, NULL );
+
+    clError = clSetKernelArg(renderDepth_ocl_kernel, 0, sizeof(cl_mem), &ocl_output_render_buffer);
+    clError &= clSetKernelArg(renderDepth_ocl_kernel, 1, sizeof(cl_mem), &ocl_FloatDepth);
+    clError &= clSetKernelArg(renderDepth_ocl_kernel, 2, sizeof(cl_float), &nearPlane);
+    clError &= clSetKernelArg(renderDepth_ocl_kernel, 3, sizeof(cl_float), &farPlane);
+    checkErr(clError, "clSetKernelArg");
+
+    size_t globalWorksize[2] = { computationSize.x, computationSize.y };
+
+    clError = clEnqueueNDRangeKernel(cmd_queues[0][0], renderDepth_ocl_kernel, 2,
+            NULL, globalWorksize, NULL, 0, NULL, NULL);
+    checkErr(clError, "clEnqueueNDRangeKernel");
+
+
+    clError = clEnqueueReadBuffer(cmd_queues[0][0], ocl_output_render_buffer, CL_FALSE, 0, outputSize.x * outputSize.y * sizeof(uchar4), out, 0, NULL, NULL );  
+    checkErr( clError, "clEnqueueReadBuffer");
 }
 
 void Kfusion::computeFrame(const ushort * inputDepth, const uint2 inputSize,
