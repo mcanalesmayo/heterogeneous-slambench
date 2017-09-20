@@ -43,6 +43,14 @@
 
 #endif
 
+cl_kernel mm2meters_ocl_kernel;
+
+cl_mem ocl_FloatDepth = NULL;
+cl_mem ocl_depth_buffer = NULL;
+
+uint2 computationSizeBkp = make_uint2(0, 0);
+uint2 outputImageSizeBkp = make_uint2(0, 0);
+
 // input once
 float * gaussian;
 
@@ -83,6 +91,12 @@ void clean() {
 
 void Kfusion::languageSpecificConstructor() {
 	init();
+
+    mm2meters_ocl_kernel = clCreateKernel(programs[0], "mm2metersKernel", &clError);
+    checkErr(clError, "clCreateKernel");
+
+    ocl_FloatDepth = clCreateBuffer(contexts[0], CL_MEM_READ_WRITE, sizeof(float) * computationSize.x * computationSize.y, NULL, &clError);
+    checkErr(clError, "clCreateBuffer");
 
 	if (getenv("KERNEL_TIMINGS"))
 		print_kernel_timing = true;
@@ -131,6 +145,17 @@ void Kfusion::languageSpecificConstructor() {
 }
 
 Kfusion::~Kfusion() {
+    if (ocl_FloatDepth) {
+        clError = clReleaseMemObject(ocl_FloatDepth);
+        checkErr(clError, "clReleaseMem");
+        ocl_FloatDepth = NULL;
+    }
+    if (ocl_depth_buffer) {
+        clError = clReleaseMemObject(ocl_depth_buffer);
+        checkErr(clError, "clReleaseMem");
+        ocl_depth_buffer = NULL;
+    }
+
 	free(floatDepth);
 	free(trackingResult);
 
@@ -147,6 +172,9 @@ Kfusion::~Kfusion() {
 	free(vertex);
 	free(normal);
 	free(gaussian);
+
+    RELEASE_KERNEL(mm2meters_ocl_kernel);
+    mm2meters_ocl_kernel = NULL;
 
 	volume.release();
 }
@@ -917,7 +945,64 @@ void renderVolumeKernel(uchar4* out, const uint2 depthSize, const Volume volume,
 
 bool Kfusion::preprocessing(const ushort * inputDepth, const uint2 inputSize) {
 
-	mm2metersKernel(floatDepth, computationSize, inputDepth, inputSize);
+	// bilateral_filter(ScaledDepth[0], inputDepth, inputSize , gaussian, e_delta, radius);
+    uint2 outSize = computationSize;
+    uint2 inSize = inputSize;
+
+    // Check for unsupported conditions
+    if ((inSize.x < outSize.x) || (inSize.y < outSize.y)) {
+        std::cerr << "Invalid ratio." << std::endl;
+        exit(1);
+    }
+    if ((inSize.x % outSize.x != 0) || (inSize.y % outSize.y != 0)) {
+        std::cerr << "Invalid ratio." << std::endl;
+        exit(1);
+    }
+    if ((inSize.x / outSize.x != inSize.y / outSize.y)) {
+        std::cerr << "Invalid ratio." << std::endl;
+        exit(1);
+    }
+
+    int ratio = inSize.x / outSize.x;
+
+    if (computationSizeBkp.x < inSize.x|| computationSizeBkp.y < inSize.y || ocl_depth_buffer == NULL) {
+        computationSizeBkp = make_uint2(inSize.x, inSize.y);
+        if (ocl_depth_buffer != NULL) {
+            clError = clReleaseMemObject(ocl_depth_buffer);
+            checkErr(clError, "clReleaseMemObject");
+        }
+        ocl_depth_buffer = clCreateBuffer(contexts[0], CL_MEM_READ_WRITE, inSize.x * inSize.y * sizeof(uint16_t), NULL, &clError);
+        checkErr(clError, "clCreateBuffer input");
+    }
+    clError = clEnqueueWriteBuffer(cmd_queues[0][0], ocl_depth_buffer, CL_TRUE, 0, inSize.x * inSize.y * sizeof(uint16_t), inputDepth, 0, NULL, NULL);
+    checkErr(clError, "clEnqueueWriteBuffer");
+
+    int arg = 0;
+    char errStr[20];
+
+    clError = clSetKernelArg(mm2meters_ocl_kernel, arg++, sizeof(cl_mem), &ocl_FloatDepth);
+    sprintf(errStr, "clSetKernelArg%d", arg);
+    checkErr(clError, errStr);
+    clError = clSetKernelArg(mm2meters_ocl_kernel, arg++, sizeof(cl_uint2), &outSize);
+    sprintf(errStr, "clSetKernelArg%d", arg);
+    checkErr(clError, errStr);
+    clError = clSetKernelArg(mm2meters_ocl_kernel, arg++, sizeof(cl_mem), &ocl_depth_buffer);
+    sprintf(errStr, "clSetKernelArg%d", arg);
+    checkErr(clError, errStr);
+    clError = clSetKernelArg(mm2meters_ocl_kernel, arg++, sizeof(cl_uint2), &inSize);
+    sprintf(errStr, "clSetKernelArg%d", arg);
+    checkErr(clError, errStr);
+    clError = clSetKernelArg(mm2meters_ocl_kernel, arg++, sizeof(cl_int), &ratio);
+    sprintf(errStr, "clSetKernelArg%d", arg);
+    checkErr(clError, errStr);
+
+    size_t globalWorksize[2] = { outSize.x, outSize.y };
+
+    clError = clEnqueueNDRangeKernel(cmd_queues[0][0], mm2meters_ocl_kernel, 2, NULL, globalWorksize, NULL, 0, NULL, NULL);
+    checkErr(clError, "clEnqueueNDRangeKernel");
+
+    clEnqueueReadBuffer(cmd_queues[0][0], ocl_FloatDepth, CL_TRUE, 0, outSize.x * outSize.y * sizeof(float), floatDepth, 0, NULL, NULL);
+
 	bilateralFilterKernel(ScaledDepth[0], floatDepth, computationSize, gaussian, e_delta, radius);
 
 	return true;
