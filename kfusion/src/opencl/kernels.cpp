@@ -501,6 +501,7 @@ void reduceKernel(float * out, TrackData* J, const uint2 Jsize,
 		//std::cerr << values[0][ii] << " ";
 		//std::cerr << "\n";
 	}
+	printf("values[0]: %2.2f\n", values[0]);
 	TOCK("reduceKernel", 512);
 }
 
