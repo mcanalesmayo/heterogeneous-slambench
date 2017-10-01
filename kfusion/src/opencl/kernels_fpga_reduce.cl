@@ -50,38 +50,41 @@ __kernel void reduceKernel (
 			}
 
 			// Error part
-			sums[0] += row.error * row.error;
+			//sums[0] += row.error * row.error;
+			sums[0] = mad(row.error, row.error, sums[0]);
 
 			// JTe part
-			for(int i = 0; i < 6; ++i)
-			sums[i+1] += row.error * row.J[i];
+			for(int i = 0; i < 6; ++i) {
+				sums[i+1] = mad(row.error, row.J[i], sums[i+1]);
+			}
 
-			jtj[0] += row.J[0] * row.J[0];
-			jtj[1] += row.J[0] * row.J[1];
-			jtj[2] += row.J[0] * row.J[2];
-			jtj[3] += row.J[0] * row.J[3];
-			jtj[4] += row.J[0] * row.J[4];
-			jtj[5] += row.J[0] * row.J[5];
+			jtj[0] = mad(row.J[0], row.J[0], jtj[0]);
+			jtj[1] = mad(row.J[0], row.J[1], jtj[1]);
+			jtj[2] = mad(row.J[0], row.J[2], jtj[2]);
+			jtj[3] = mad(row.J[0], row.J[3], jtj[3]);
+			jtj[4] = mad(row.J[0], row.J[4], jtj[4]);
+			jtj[5] = mad(row.J[0], row.J[5], jtj[5]);
 
-			jtj[6] += row.J[1] * row.J[1];
-			jtj[7] += row.J[1] * row.J[2];
-			jtj[8] += row.J[1] * row.J[3];
-			jtj[9] += row.J[1] * row.J[4];
-			jtj[10] += row.J[1] * row.J[5];
+			jtj[6] = mad(row.J[1], row.J[1], jtj[6]);
+			jtj[7] = mad(row.J[1], row.J[2], jtj[7]);
+			jtj[8] = mad(row.J[1], row.J[3], jtj[8]);
+			jtj[9] = mad(row.J[1], row.J[4], jtj[9]);
+			jtj[10] = mad(row.J[1], row.J[5], jtj[10]);
 
-			jtj[11] += row.J[2] * row.J[2];
-			jtj[12] += row.J[2] * row.J[3];
-			jtj[13] += row.J[2] * row.J[4];
-			jtj[14] += row.J[2] * row.J[5];
+			jtj[11] = mad(row.J[2], row.J[2], jtj[11]);
+			jtj[12] = mad(row.J[2], row.J[3], jtj[12]);
+			jtj[13] = mad(row.J[2], row.J[4], jtj[13]);
+			jtj[14] = mad(row.J[2], row.J[5], jtj[14]);
 
-			jtj[15] += row.J[3] * row.J[3];
-			jtj[16] += row.J[3] * row.J[4];
-			jtj[17] += row.J[3] * row.J[5];
+			jtj[15] = mad(row.J[3], row.J[3], jtj[15]);
+			jtj[16] = mad(row.J[3], row.J[4], jtj[16]);
+			jtj[17] = mad(row.J[3], row.J[5], jtj[17]);
 
-			jtj[18] += row.J[4] * row.J[4];
-			jtj[19] += row.J[4] * row.J[5];
+			jtj[18] = mad(row.J[4], row.J[4], jtj[18]);
+			jtj[19] = mad(row.J[4], row.J[5], jtj[19]);
 
-			jtj[20] += row.J[5] * row.J[5];
+			jtj[20] = mad(row.J[5], row.J[5], jtj[20]);
+			
 			// extra info here
 			info[0] += 1;
 		}
@@ -93,8 +96,9 @@ __kernel void reduceKernel (
 	barrier(CLK_LOCAL_MEM_FENCE);
 
 	if(sline < 32) { // sum up columns and copy to global memory in the final 32 threads
-		for(unsigned i = 1; i < blockDim; ++i)
-		S[sline] += S[i * 32 + sline];
+		for(unsigned i = 1; i < blockDim; ++i) {
+			S[sline] += S[i * 32 + sline];
+		}
 		out[sline+blockIdx*32] = S[sline];
 	}
 }

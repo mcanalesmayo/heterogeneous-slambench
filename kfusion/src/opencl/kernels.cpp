@@ -43,6 +43,17 @@
 
 #endif
 
+cl_kernel reduce_ocl_kernel;
+
+cl_mem ocl_reduce_output_buffer = NULL;
+cl_mem ocl_trackingResult = NULL;
+
+// reduction parameters
+static const size_t size_of_group = 64;
+static const size_t number_of_groups = 8;
+
+
+
 // input once
 float * gaussian;
 
@@ -86,6 +97,16 @@ void Kfusion::languageSpecificConstructor() {
 
 	if (getenv("KERNEL_TIMINGS"))
 		print_kernel_timing = true;
+
+	
+	reduce_ocl_kernel = clCreateKernel(programs[0], "reduceKernel", &clError);
+	checkErr(clError, "clCreateKernel");
+
+	ocl_trackingResult = clCreateBuffer(contexts[0], CL_MEM_READ_WRITE, sizeof(TrackData) * computationSize.x * computationSize.y, NULL, &clError);
+	checkErr(clError, "clCreateBuffer");
+	ocl_reduce_output_buffer = clCreateBuffer(contexts[0], CL_MEM_WRITE_ONLY, 32 * number_of_groups * sizeof(float), NULL, &clError);
+	checkErr(clError, "clCreateBuffer");
+
 
 	// internal buffers to initialize
 	reductionoutput = (float*) calloc(sizeof(float) * 8 * 32, 1);
@@ -131,6 +152,20 @@ void Kfusion::languageSpecificConstructor() {
 }
 
 Kfusion::~Kfusion() {
+	RELEASE_KERNEL(reduce_ocl_kernel);
+	reduce_ocl_kernel = NULL;
+
+	if (ocl_trackingResult) {
+		clError = clReleaseMemObject(ocl_trackingResult);
+		checkErr(clError, "clReleaseMem");
+		ocl_trackingResult = NULL;
+	}
+	if (ocl_reduce_output_buffer) {
+		clError = clReleaseMemObject(ocl_reduce_output_buffer);
+		checkErr(clError, "clReleaseMem");
+		ocl_reduce_output_buffer = NULL;
+	}
+
 	free(floatDepth);
 	free(trackingResult);
 
@@ -501,7 +536,6 @@ void reduceKernel(float * out, TrackData* J, const uint2 Jsize,
 		//std::cerr << values[0][ii] << " ";
 		//std::cerr << "\n";
 	}
-	printf("values[0]: %2.2f\n", values[0]);
 	TOCK("reduceKernel", 512);
 }
 
@@ -960,8 +994,50 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 					localimagesize, vertex, normal, computationSize, pose,
 					projectReference, dist_threshold, normal_threshold);
 
-			reduceKernel(reductionoutput, trackingResult, computationSize,
-					localimagesize);
+
+
+			clEnqueueWriteBuffer(cmd_queues[0][0], ocl_trackingResult, CL_TRUE, 0, sizeof(TrackData) * (computationSize.x * computationSize.y), trackingResult, 0, NULL, NULL);
+			checkErr(clError, "clEnqueueReadBuffer");
+
+			int arg = 0;
+			char errStr[20];
+			clError = clSetKernelArg(reduce_ocl_kernel, arg++, sizeof(cl_mem), &ocl_reduce_output_buffer);
+			sprintf(errStr, "clSetKernelArg%d", arg);
+			checkErr(clError, errStr);
+			clError = clSetKernelArg(reduce_ocl_kernel, arg++, sizeof(cl_mem), &ocl_trackingResult);
+			sprintf(errStr, "clSetKernelArg%d", arg);
+			checkErr(clError, errStr);
+			clError = clSetKernelArg(reduce_ocl_kernel, arg++, sizeof(cl_uint2), &computationSize);
+			sprintf(errStr, "clSetKernelArg%d", arg);
+			checkErr(clError, errStr);
+			clError = clSetKernelArg(reduce_ocl_kernel, arg++, sizeof(cl_uint2), &localimagesize);
+			sprintf(errStr, "clSetKernelArg%d", arg);
+			checkErr(clError, errStr);
+			clError = clSetKernelArg(reduce_ocl_kernel, arg++, size_of_group * 32 * sizeof(float), NULL);
+			sprintf(errStr, "clSetKernelArg%d", arg);
+			checkErr(clError, errStr);
+
+			size_t RglobalWorksize[1] = { size_of_group * number_of_groups };
+			size_t RlocalWorksize[1] = { size_of_group }; // Dont change it !
+
+			clError = clEnqueueNDRangeKernel(cmd_queues[0][0], reduce_ocl_kernel, 1, NULL, RglobalWorksize, RlocalWorksize, 0, NULL, NULL);
+			checkErr(clError, "clEnqueueNDRangeKernel");
+
+			clError = clEnqueueReadBuffer(cmd_queues[0][0], ocl_reduce_output_buffer, CL_TRUE, 0, 32 * number_of_groups * sizeof(float), reductionoutput, 0, NULL, NULL);
+			checkErr(clError, "clEnqueueReadBuffer");
+
+			TooN::Matrix<TooN::Dynamic, TooN::Dynamic, float, TooN::Reference::RowMajor> values(reductionoutput, number_of_groups, 32);
+
+			for (int j = 1; j < number_of_groups; ++j) {
+				values[0] += values[j];
+			}
+
+
+
+
+
+			/*reduceKernel(reductionoutput, trackingResult, computationSize,
+					localimagesize);*/
 
 			if (updatePoseKernel(pose, reductionoutput, icp_threshold))
 				break;
