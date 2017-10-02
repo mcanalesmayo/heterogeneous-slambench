@@ -42,7 +42,7 @@ __kernel void reduceKernel (
         float * info = sums + 28;
 
         for(uint i = 0; i < 32; ++i) {
-            sums[i] = 0.0f;   
+            sums[i] = 0.0f;
         }
 
         for(uint y = blockIdx; y < size.y; y += gridDim) {

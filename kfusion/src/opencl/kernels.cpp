@@ -72,7 +72,7 @@ Matrix4 raycastPose;
 float3 ** inputVertex;
 float3 ** inputNormal;
 
-bool print_kernel_timing = false;
+bool print_kernel_timing = true;
 #ifdef __APPLE__
 	clock_serv_t cclock;
 	mach_timespec_t tick_clockData;
@@ -204,42 +204,42 @@ void initVolumeKernel(Volume volume) {
 void bilateralFilterKernel(float* out, const float* in, uint2 size,
 		const float * gaussian, float e_d, int r) {
 	TICK()
-		uint y;
-		float e_d_squared_2 = e_d * e_d * 2;
+	uint y;
+	float e_d_squared_2 = e_d * e_d * 2;
 #pragma omp parallel for \
-	    shared(out),private(y)   
-		for (y = 0; y < size.y; y++) {
-			for (uint x = 0; x < size.x; x++) {
-				uint pos = x + y * size.x;
-				if (in[pos] == 0) {
-					out[pos] = 0;
-					continue;
-				}
+    shared(out),private(y)   
+	for (y = 0; y < size.y; y++) {
+		for (uint x = 0; x < size.x; x++) {
+			uint pos = x + y * size.x;
+			if (in[pos] == 0) {
+				out[pos] = 0;
+				continue;
+			}
 
-				float sum = 0.0f;
-				float t = 0.0f;
+			float sum = 0.0f;
+			float t = 0.0f;
 
-				const float center = in[pos];
+			const float center = in[pos];
 
-				for (int i = -r; i <= r; ++i) {
-					for (int j = -r; j <= r; ++j) {
-						uint2 curPos = make_uint2(clamp(x + i, 0u, size.x - 1),
-								clamp(y + j, 0u, size.y - 1));
-						const float curPix = in[curPos.x + curPos.y * size.x];
-						if (curPix > 0) {
-							const float mod = sq(curPix - center);
-							const float factor = gaussian[i + r]
-									* gaussian[j + r]
-									* expf(-mod / e_d_squared_2);
-							t += factor * curPix;
-							sum += factor;
-						}
+			for (int i = -r; i <= r; ++i) {
+				for (int j = -r; j <= r; ++j) {
+					uint2 curPos = make_uint2(clamp(x + i, 0u, size.x - 1),
+							clamp(y + j, 0u, size.y - 1));
+					const float curPix = in[curPos.x + curPos.y * size.x];
+					if (curPix > 0) {
+						const float mod = sq(curPix - center);
+						const float factor = gaussian[i + r]
+								* gaussian[j + r]
+								* expf(-mod / e_d_squared_2);
+						t += factor * curPix;
+						sum += factor;
 					}
 				}
-				out[pos] = t / sum;
 			}
+			out[pos] = t / sum;
 		}
-		TOCK("bilateralFilterKernel", size.x * size.y);
+	}
+	TOCK("bilateralFilterKernel", size.x * size.y);
 }
 
 void depth2vertexKernel(float3* vertex, const float * depth, uint2 imageSize,
@@ -1011,9 +1011,6 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 			sprintf(errStr, "clSetKernelArg%d", arg);
 			checkErr(clError, errStr);
 			clError = clSetKernelArg(reduce_ocl_kernel, arg++, sizeof(cl_uint2), &localimagesize);
-			sprintf(errStr, "clSetKernelArg%d", arg);
-			checkErr(clError, errStr);
-			clError = clSetKernelArg(reduce_ocl_kernel, arg++, size_of_group * 32 * sizeof(float), NULL);
 			sprintf(errStr, "clSetKernelArg%d", arg);
 			checkErr(clError, errStr);
 
