@@ -18,11 +18,11 @@ typedef struct sTrackData {
 } TrackData;
 
 __kernel void reduceKernel (
-		__global float * out,
-		__global const TrackData * J,
+		__global float * restrict out,
+		__global const TrackData * restrict J,
 		const uint2 JSize,
 		const uint2 size,
-		__local float * S
+		__local float * restrict S
 ) {
 
 	uint blockIdx = get_group_id(0);
@@ -33,14 +33,16 @@ __kernel void reduceKernel (
 	const uint sline = threadIdx;
 
 	float sums[32];
-	float * jtj = sums + 7;
-	float * info = sums + 28;
+	float * restrict jtj = sums + 7;
+	float * restrict info = sums + 28;
 
 	for(uint i = 0; i < 32; ++i)
 	sums[i] = 0.0f;
 
-	for(uint y = blockIdx; y < size.y; y += gridDim) {
-		for(uint x = sline; x < size.x; x += blockDim ) {
+	for(uint yy = 0/*blockIdx*/; yy < size.y - blockIdx; yy += gridDim) {
+		uint y = yy + blockIdx;
+		for(uint xx = 0/*sline*/; xx < size.x - sline; xx += blockDim ) {
+			uint x = xx + sline;
 			const TrackData row = J[x + y * JSize.x];
 			if(row.result < 1) {
 				info[1] += row.result == -4 ? 1 : 0;
