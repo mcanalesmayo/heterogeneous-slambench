@@ -140,7 +140,7 @@ int opencl_init(void) {
     std::string binary_file = aocl_utils::getBoardBinaryFile(AOCX_PATH, device_lists[0][0]);
     printf("Using AOCX: %s\n", binary_file.c_str());
     programs[0] = aocl_utils::createProgramFromBinary(contexts[0], binary_file.c_str(), device_lists[0], 1);
-    clError = clBuildProgram(programs[0], 0, NULL, NULL, NULL, NULL);
+    clError = clBuildProgram(programs[0], 0, NULL, "-cl-fast-relaxed-math", NULL, NULL);
     if (clError != CL_SUCCESS) {
         printf("ERROR: FPGA clBuildProgram() => %d\n", clError);
         return -1;
