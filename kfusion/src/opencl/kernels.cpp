@@ -862,5 +862,5 @@ void Kfusion::computeFrame(const ushort * inputDepth, const uint2 inputSize, flo
 void synchroniseDevices() {
 	//clFinish(cmd_queues[0][0]);
 	clFinish(cmd_queues[1][0]);
-	clFinish(cmd_queues[1][1]);
+	//clFinish(cmd_queues[1][1]);
 }

@@ -37,7 +37,7 @@ int opencl_clean(void) {
     clError &= clReleaseProgram(programs[1]);
     //clError &= clReleaseCommandQueue(cmd_queues[0][0]);
     clError &= clReleaseCommandQueue(cmd_queues[1][0]);
-    clError &= clReleaseCommandQueue(cmd_queues[1][1]);
+    //clError &= clReleaseCommandQueue(cmd_queues[1][1]);
     //clError &= clReleaseContext(contexts[0]);
     clError &= clReleaseContext(contexts[1]);
 
