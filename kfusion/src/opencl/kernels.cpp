@@ -69,7 +69,7 @@ Matrix4 raycastPose;
 float3 ** inputVertex;
 float3 ** inputNormal;
 
-bool print_kernel_timing = false;
+bool print_kernel_timing = true;
 #ifdef __APPLE__
 	clock_serv_t cclock;
 	mach_timespec_t tick_clockData;
@@ -1030,7 +1030,6 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
             clError = clEnqueueWriteBuffer(cmd_queues[0][0], ocl_inputNormal[level], CL_TRUE, 0, sizeof(float3) * (computationSize.x * computationSize.y) / (int) pow(2, level), inputNormal[level], 0, NULL, NULL);
             clError = clEnqueueWriteBuffer(cmd_queues[0][0], ocl_vertex, CL_TRUE, 0, sizeof(float3) * (computationSize.x * computationSize.y), vertex, 0, NULL, NULL);
             clError = clEnqueueWriteBuffer(cmd_queues[0][0], ocl_normal, CL_TRUE, 0, sizeof(float3) * (computationSize.x * computationSize.y), normal, 0, NULL, NULL);
-
 
             clError = clSetKernelArg(track_ocl_kernel, arg++, sizeof(cl_mem), &ocl_trackingResult);
             sprintf(errStr, "clSetKernelArg%d", arg);
