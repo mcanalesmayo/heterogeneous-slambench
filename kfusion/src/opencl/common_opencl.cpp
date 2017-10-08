@@ -17,7 +17,7 @@
 #define STR(x) XSTR(x)
 
 #ifndef AOCX_PATH
-#define AOCX_PATH "/home/root/heterogeneous-slambench/kfusion/src/opencl/kernels_fpga_integrate"
+#define AOCX_PATH "/home/mcanales/Desktop/slambench/kfusion/src/opencl/kernels_fpga_reduce_de5net"
 #endif
 
 cl_int             clError;
@@ -140,7 +140,9 @@ int opencl_init(void) {
     std::string binary_file = aocl_utils::getBoardBinaryFile(AOCX_PATH, device_lists[0][0]);
     printf("Using AOCX: %s\n", binary_file.c_str());
     programs[0] = aocl_utils::createProgramFromBinary(contexts[0], binary_file.c_str(), device_lists[0], 1);
-    clError = clBuildProgram(programs[0], 0, NULL, NULL, NULL, NULL);
+    const char * buildOpts = "-cl-fast-relaxed-math";
+    //const char * buildOpts = NULL;
+    clError = clBuildProgram(programs[0], 0, NULL, buildOpts, NULL, NULL);
     if (clError != CL_SUCCESS) {
         printf("ERROR: FPGA clBuildProgram() => %d\n", clError);
         return -1;
