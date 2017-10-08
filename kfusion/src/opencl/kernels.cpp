@@ -68,7 +68,7 @@ Matrix4 raycastPose;
 float3 ** inputVertex;
 float3 ** inputNormal;
 
-bool print_kernel_timing = false;
+bool print_kernel_timing = true;
 #ifdef __APPLE__
 	clock_serv_t cclock;
 	mach_timespec_t tick_clockData;
