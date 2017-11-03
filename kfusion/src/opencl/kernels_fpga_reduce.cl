@@ -39,7 +39,7 @@ __kernel void reduceKernel (
 	for(uint i = 0; i < 32; ++i)
 	sums[i] = 0.0f;
 
-	uint y, y_aux, x, x_aux;
+	uint y, y_aux, x, x_aux, i;
 
 	for(y_aux = 0; y_aux < size.y - blockIdx; y_aux += gridDim) {
 		y = y_aux + blockIdx;
@@ -100,7 +100,7 @@ __kernel void reduceKernel (
 	barrier(CLK_LOCAL_MEM_FENCE);
 
 	if(sline < 32) { // sum up columns and copy to global memory in the final 32 threads
-		for(unsigned i = 1; i < blockDim; ++i) {
+		for(i = 1; i < blockDim; ++i) {
 			S[sline] += S[i * 32 + sline];
 		}
 		out[sline+blockIdx*32] = S[sline];
