@@ -21,16 +21,8 @@ __kernel void reduceKernel (
 		__global float * restrict out,
 		__global const TrackData * restrict J,
 		const uint2 JSize,
-		const uint2 size,
-		__local float * restrict S
+		const uint2 size
 ) {
-
-	uint blockIdx = get_group_id(0);
-	uint blockDim = get_local_size(0);
-	uint threadIdx = get_local_id(0);
-	uint gridDim = get_num_groups(0);
-
-	const uint sline = threadIdx;
 
 	float sums[32];
 	float * restrict jtj = sums + 7;
@@ -39,12 +31,10 @@ __kernel void reduceKernel (
 	for(uint i = 0; i < 32; ++i)
 	sums[i] = 0.0f;
 
-	uint y, y_aux, x, x_aux, i;
+	uint y, x, i;
 
-	for(y_aux = 0; y_aux < size.y - blockIdx; y_aux += gridDim) {
-		y = y_aux + blockIdx;
-		for(x_aux = 0; x_aux < size.x - sline; x_aux += blockDim ) {
-			x = x_aux + sline;
+	for(y = 0; y < size.y; y++) {
+		for(x = 0; x < size.x; x++) {
 			const TrackData row = J[x + y * JSize.x];
 			if(row.result < 1) {
 				info[1] += row.result == -4 ? 1 : 0;
@@ -94,15 +84,7 @@ __kernel void reduceKernel (
 		}
 	}
 
-	for(int i = 0; i < 32; ++i) // copy over to shared memory
-	S[sline * 32 + i] = sums[i];
-
-	barrier(CLK_LOCAL_MEM_FENCE);
-
-	if(sline < 32) { // sum up columns and copy to global memory in the final 32 threads
-		for(i = 1; i < blockDim; ++i) {
-			S[sline] += S[i * 32 + sline];
-		}
-		out[sline+blockIdx*32] = S[sline];
+	for(i = 0; i < 32; i++) {
+		out[i] = sums[i];
 	}
 }
