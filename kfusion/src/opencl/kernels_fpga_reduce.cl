@@ -23,19 +23,24 @@ __kernel void reduceKernel (
 		const uint2 JSize,
 		const uint2 size
 ) {
+	uint threadIdx = get_global_id(0);
+	uint globalSize = get_global_size(0);
+	uint yBatchSize = JSize.y / globalSize;
 
 	float sums[32];
 	float * restrict jtj = sums + 7;
 	float * restrict info = sums + 28;
 
-	for(uint i = 0; i < 32; ++i)
-	sums[i] = 0.0f;
+	uint y, y_aux, x, i;
 
-	uint y, x, i;
+	for(i = 0; i < 32; ++i) {
+		sums[i] = 0.0f;
+	}
 
-	for(y = 0; y < size.y; y++) {
+	for(y = 0; y < yBatchSize; y++) {
+		y_aux = y + yBatchSize;
 		for(x = 0; x < size.x; x++) {
-			const TrackData row = J[x + y * JSize.x];
+			const TrackData row = J[x + y_aux * JSize.x];
 			if(row.result < 1) {
 				info[1] += row.result == -4 ? 1 : 0;
 				info[2] += row.result == -5 ? 1 : 0;
@@ -48,7 +53,7 @@ __kernel void reduceKernel (
 			sums[0] = mad(row.error, row.error, sums[0]);
 
 			// JTe part
-			for(int i = 0; i < 6; ++i) {
+			for(i = 0; i < 6; ++i) {
 				sums[i+1] = mad(row.error, row.J[i], sums[i+1]);
 			}
 
@@ -85,6 +90,6 @@ __kernel void reduceKernel (
 	}
 
 	for(i = 0; i < 32; i++) {
-		out[i] = sums[i];
+		out[i+threadIdx*32] = sums[i];
 	}
 }
