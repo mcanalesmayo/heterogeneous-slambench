@@ -308,6 +308,7 @@ void new_reduce(int blockIndex, float * out, TrackData* J, const uint2 Jsize,
 		for (uint x = 0; x < size.x; x++) {
 
 			const TrackData & row = J[(x + y * Jsize.x)]; // ...
+
 			if (row.result < 1) {
 				// accesses sums[28..31]
 				/*(sums+28)[1]*/sums29 += row.result == -4 ? 1 : 0;
@@ -501,7 +502,7 @@ void reduceKernel(float * out, TrackData* J, const uint2 Jsize,
 		//std::cerr << values[0][ii] << " ";
 		//std::cerr << "\n";
 	}
-	printf("values[0]: %2.2f\n", values[0]);
+
 	TOCK("reduceKernel", 512);
 }
 
