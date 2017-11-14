@@ -43,16 +43,13 @@
 
 #endif
 
-#define SHIFT_AMOUNT 13							// 2^13 = 8192
-#define SHIFT_MASK ((1 << SHIFT_AMOUNT) - 1)	// LSB set, MSB clear
-
 #define FRACT_BITS 16
 #define FRACT_BITS_D2 8
 #define FIXED_ONE (1 << FRACT_BITS)
 #define INT2FIXED(x) ((x) << FRACT_BITS)
-#define FLOAT2FIXED(x) ((int)((x) * INT2FIXED(1))) 
+#define FLOAT2FIXED(x) ((int)((x) * (1 << FRACT_BITS))) 
 #define FIXED2INT(x) ((x) >> FRACT_BITS)
-#define FIXED2FLOAT(x) (((float)(x)) / INT2FIXED(1))
+#define FIXED2FLOAT(x) (((float)(x)) / (1 << FRACT_BITS))
 #define MULT(x, y) ( ((x) >> FRACT_BITS_D2) * ((y) >> FRACT_BITS_D2) )
 
 typedef struct sTrackDataFixedPoint {
@@ -1032,7 +1029,7 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 
 			for (int x=0; x<computationSize.x; x++) {
 				for (int y=0; y<computationSize.y; y++) {
-					trackingResultFixedPoint[x+y*computationSize.x].result = (int) trackingResult[x+y*computationSize.x].result;
+					trackingResultFixedPoint[x+y*computationSize.x].result = FLOAT2FIXED(trackingResult[x+y*computationSize.x].result);
 					trackingResultFixedPoint[x+y*computationSize.x].error = FLOAT2FIXED(trackingResult[x+y*computationSize.x].error);
 					for (int k=0; k<6; k++) {
 						trackingResultFixedPoint[x+y*computationSize.x].J[k] = FLOAT2FIXED(trackingResult[x+y*computationSize.x].J[k]);
@@ -1075,8 +1072,9 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 				values[0] += values[j];
 			}*/
 
-			size_t RglobalWorksize[1] = { 4 };
-			clError = clEnqueueNDRangeKernel(cmd_queues[0][0], reduce_ocl_kernel, 1, NULL, RglobalWorksize, NULL, 0, NULL, NULL);
+			size_t RglobalWorksize[1] = { 1 };
+			size_t RlocalWorksize[1] = { 1 };
+			clError = clEnqueueNDRangeKernel(cmd_queues[0][0], reduce_ocl_kernel, 1, NULL, RglobalWorksize, RlocalWorksize, 0, NULL, NULL);
             checkErr(clError, "clEnqueueNDRangeKernel");
 
             clError = clEnqueueReadBuffer(cmd_queues[0][0], ocl_reduce_output_buffer, CL_TRUE, 0, 32 * sizeof(int), reductionoutputFixedPoint, 0, NULL, NULL);

@@ -28,22 +28,20 @@ __kernel void reduceKernel (
 ) {
 	uint threadIdx = get_global_id(0);
 	uint globalSize = get_global_size(0);
-	uint yBatchSize = JSize.y / globalSize;
 
 	int sums[32];
 	int * restrict jtj = sums + 7;
 	int * restrict info = sums + 28;
 
-	uint y, y_aux, x, i;
+	uint y, x, i;
 
 	for(i = 0; i < 32; ++i) {
-		sums[i] = 0.0f;
+		sums[i] = 0;
 	}
 
-	for(y = 0; y < yBatchSize; y++) {
-		y_aux = y + yBatchSize;
+	for(y = 0; y < size.y; y++) {
 		for(x = 0; x < size.x; x++) {
-			const TrackDataFixedPoint row = J[x + y_aux * JSize.x];
+			const TrackDataFixedPoint row = J[x + y * JSize.x];
 			if(row.result < 1) {
 				info[1] += row.result == -4 ? 1 : 0;
 				info[2] += row.result == -5 ? 1 : 0;
