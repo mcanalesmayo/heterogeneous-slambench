@@ -11,15 +11,18 @@
 
 /************** TYPES ***************/
 
-typedef struct sTrackData {
+#define FRACT_BITS_D2 8
+#define MULT(x, y) ( ((x) >> FRACT_BITS_D2) * ((y) >> FRACT_BITS_D2) )
+
+typedef struct sTrackDataFixedPoint {
 	int result;
-	float error;
-	float J[6];
-} TrackData;
+	int error;
+	int J[6];
+} TrackDataFixedPoint;
 
 __kernel void reduceKernel (
-		__global float * restrict out,
-		__global const TrackData * restrict J,
+		__global int * restrict out,
+		__global const TrackDataFixedPoint * restrict J,
 		const uint2 JSize,
 		const uint2 size
 ) {
@@ -27,9 +30,9 @@ __kernel void reduceKernel (
 	uint globalSize = get_global_size(0);
 	uint yBatchSize = JSize.y / globalSize;
 
-	float sums[32];
-	float * restrict jtj = sums + 7;
-	float * restrict info = sums + 28;
+	int sums[32];
+	int * restrict jtj = sums + 7;
+	int * restrict info = sums + 28;
 
 	uint y, y_aux, x, i;
 
@@ -40,7 +43,7 @@ __kernel void reduceKernel (
 	for(y = 0; y < yBatchSize; y++) {
 		y_aux = y + yBatchSize;
 		for(x = 0; x < size.x; x++) {
-			const TrackData row = J[x + y_aux * JSize.x];
+			const TrackDataFixedPoint row = J[x + y_aux * JSize.x];
 			if(row.result < 1) {
 				info[1] += row.result == -4 ? 1 : 0;
 				info[2] += row.result == -5 ? 1 : 0;
@@ -50,40 +53,40 @@ __kernel void reduceKernel (
 
 			// Error part
 			//sums[0] += row.error * row.error;
-			sums[0] = mad(row.error, row.error, sums[0]);
+			sums[0] += MULT(row.error, row.error);
 
 			// JTe part
 			for(i = 0; i < 6; ++i) {
-				sums[i+1] = mad(row.error, row.J[i], sums[i+1]);
+				sums[i+1] += MULT(row.error, row.J[i]);
 			}
 
-			jtj[0] = mad(row.J[0], row.J[0], jtj[0]);
-			jtj[1] = mad(row.J[0], row.J[1], jtj[1]);
-			jtj[2] = mad(row.J[0], row.J[2], jtj[2]);
-			jtj[3] = mad(row.J[0], row.J[3], jtj[3]);
-			jtj[4] = mad(row.J[0], row.J[4], jtj[4]);
-			jtj[5] = mad(row.J[0], row.J[5], jtj[5]);
+			jtj[0] += MULT(row.J[0], row.J[0]);
+			jtj[1] += MULT(row.J[0], row.J[1]);
+			jtj[2] += MULT(row.J[0], row.J[2]);
+			jtj[3] += MULT(row.J[0], row.J[3]);
+			jtj[4] += MULT(row.J[0], row.J[4]);
+			jtj[5] += MULT(row.J[0], row.J[5]);
 
-			jtj[6] = mad(row.J[1], row.J[1], jtj[6]);
-			jtj[7] = mad(row.J[1], row.J[2], jtj[7]);
-			jtj[8] = mad(row.J[1], row.J[3], jtj[8]);
-			jtj[9] = mad(row.J[1], row.J[4], jtj[9]);
-			jtj[10] = mad(row.J[1], row.J[5], jtj[10]);
+			jtj[6] += MULT(row.J[1], row.J[1]);
+			jtj[7] += MULT(row.J[1], row.J[2]);
+			jtj[8] += MULT(row.J[1], row.J[3]);
+			jtj[9] += MULT(row.J[1], row.J[4]);
+			jtj[10] += MULT(row.J[1], row.J[5]);
 
-			jtj[11] = mad(row.J[2], row.J[2], jtj[11]);
-			jtj[12] = mad(row.J[2], row.J[3], jtj[12]);
-			jtj[13] = mad(row.J[2], row.J[4], jtj[13]);
-			jtj[14] = mad(row.J[2], row.J[5], jtj[14]);
+			jtj[11] += MULT(row.J[2], row.J[2]);
+			jtj[12] += MULT(row.J[2], row.J[3]);
+			jtj[13] += MULT(row.J[2], row.J[4]);
+			jtj[14] += MULT(row.J[2], row.J[5]);
 
-			jtj[15] = mad(row.J[3], row.J[3], jtj[15]);
-			jtj[16] = mad(row.J[3], row.J[4], jtj[16]);
-			jtj[17] = mad(row.J[3], row.J[5], jtj[17]);
+			jtj[15] += MULT(row.J[3], row.J[3]);
+			jtj[16] += MULT(row.J[3], row.J[4]);
+			jtj[17] += MULT(row.J[3], row.J[5]);
 
-			jtj[18] = mad(row.J[4], row.J[4], jtj[18]);
-			jtj[19] = mad(row.J[4], row.J[5], jtj[19]);
+			jtj[18] += MULT(row.J[4], row.J[4]);
+			jtj[19] += MULT(row.J[4], row.J[5]);
 
-			jtj[20] = mad(row.J[5], row.J[5], jtj[20]);
-			
+			jtj[20] += MULT(row.J[5], row.J[5]);
+
 			// extra info here
 			info[0] += 1;
 		}

@@ -43,6 +43,24 @@
 
 #endif
 
+#define SHIFT_AMOUNT 13							// 2^13 = 8192
+#define SHIFT_MASK ((1 << SHIFT_AMOUNT) - 1)	// LSB set, MSB clear
+
+#define FRACT_BITS 16
+#define FRACT_BITS_D2 8
+#define FIXED_ONE (1 << FRACT_BITS)
+#define INT2FIXED(x) ((x) << FRACT_BITS)
+#define FLOAT2FIXED(x) ((int)((x) * INT2FIXED(1))) 
+#define FIXED2INT(x) ((x) >> FRACT_BITS)
+#define FIXED2FLOAT(x) (((float)(x)) / INT2FIXED(1))
+#define MULT(x, y) ( ((x) >> FRACT_BITS_D2) * ((y) >> FRACT_BITS_D2) )
+
+typedef struct sTrackDataFixedPoint {
+	int result;
+	int error;
+	int J[6];
+} TrackDataFixedPoint;
+
 cl_kernel reduce_ocl_kernel;
 
 cl_mem ocl_reduce_output_buffer = NULL;
@@ -64,7 +82,9 @@ float3 * normal;
 
 // intra-frame
 TrackData * trackingResult;
+TrackDataFixedPoint * trackingResultFixedPoint;
 float* reductionoutput;
+int* reductionoutputFixedPoint;
 float ** ScaledDepth;
 float * floatDepth;
 Matrix4 oldPose;
@@ -102,16 +122,19 @@ void Kfusion::languageSpecificConstructor() {
 	reduce_ocl_kernel = clCreateKernel(programs[0], "reduceKernel", &clError);
 	checkErr(clError, "clCreateKernel");
 
-	ocl_trackingResult = clCreateBuffer(contexts[0], CL_MEM_READ_WRITE, sizeof(TrackData) * computationSize.x * computationSize.y, NULL, &clError);
+	/*ocl_trackingResult = clCreateBuffer(contexts[0], CL_MEM_READ_WRITE, sizeof(TrackData) * computationSize.x * computationSize.y, NULL, &clError);
 	checkErr(clError, "clCreateBuffer");
-	/*ocl_reduce_output_buffer = clCreateBuffer(contexts[0], CL_MEM_WRITE_ONLY, 32 * number_of_groups * sizeof(float), NULL, &clError);
+	ocl_reduce_output_buffer = clCreateBuffer(contexts[0], CL_MEM_WRITE_ONLY, 32 * number_of_groups * sizeof(float), NULL, &clError);
 	checkErr(clError, "clCreateBuffer");*/
+	ocl_trackingResult = clCreateBuffer(contexts[0], CL_MEM_READ_WRITE, sizeof(TrackDataFixedPoint) * computationSize.x * computationSize.y, NULL, &clError);
+	checkErr(clError, "clCreateBuffer");
 	ocl_reduce_output_buffer = clCreateBuffer(contexts[0], CL_MEM_WRITE_ONLY, 4 * 32 * sizeof(float), NULL, &clError);
 	checkErr(clError, "clCreateBuffer");
 
 
 	// internal buffers to initialize
-	reductionoutput = (float*) calloc(sizeof(float) * 8 * 32, 1);
+	reductionoutput = (float*) calloc(sizeof(float) * 32, 1);
+	reductionoutputFixedPoint = (int*) calloc(sizeof(int) * 32, 1);
 
 	ScaledDepth = (float**) calloc(sizeof(float*) * iterations.size(), 1);
 	inputVertex = (float3**) calloc(sizeof(float3*) * iterations.size(), 1);
@@ -137,6 +160,8 @@ void Kfusion::languageSpecificConstructor() {
 			sizeof(float3) * computationSize.x * computationSize.y, 1);
 	trackingResult = (TrackData*) calloc(
 			sizeof(TrackData) * computationSize.x * computationSize.y, 1);
+	trackingResultFixedPoint = (TrackDataFixedPoint*) calloc(
+			sizeof(TrackDataFixedPoint) * computationSize.x * computationSize.y, 1);
 
 	// ********* BEGIN : Generate the gaussian *************
 	size_t gaussianS = radius * 2 + 1;
@@ -170,8 +195,10 @@ Kfusion::~Kfusion() {
 
 	free(floatDepth);
 	free(trackingResult);
+	free(trackingResultFixedPoint);
 
 	free(reductionoutput);
+	free(reductionoutputFixedPoint);
 	for (unsigned int i = 0; i < iterations.size(); ++i) {
 		free(ScaledDepth[i]);
 		free(inputVertex[i]);
@@ -1000,7 +1027,19 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 
 
 
-			clEnqueueWriteBuffer(cmd_queues[0][0], ocl_trackingResult, CL_TRUE, 0, sizeof(TrackData) * (computationSize.x * computationSize.y), trackingResult, 0, NULL, NULL);
+			/*clEnqueueWriteBuffer(cmd_queues[0][0], ocl_trackingResult, CL_TRUE, 0, sizeof(TrackData) * (computationSize.x * computationSize.y), trackingResult, 0, NULL, NULL);
+			checkErr(clError, "clEnqueueReadBuffer");*/
+
+			for (int x=0; x<computationSize.x; x++) {
+				for (int y=0; y<computationSize.y; y++) {
+					trackingResultFixedPoint[x+y*computationSize.x].result = (int) trackingResult[x+y*computationSize.x].result;
+					trackingResultFixedPoint[x+y*computationSize.x].error = FLOAT2FIXED(trackingResult[x+y*computationSize.x].error);
+					for (int k=0; k<6; k++) {
+						trackingResultFixedPoint[x+y*computationSize.x].J[k] = FLOAT2FIXED(trackingResult[x+y*computationSize.x].J[k]);
+					}
+				}
+			}
+			clEnqueueWriteBuffer(cmd_queues[0][0], ocl_trackingResult, CL_TRUE, 0, sizeof(TrackDataFixedPoint) * (computationSize.x * computationSize.y), trackingResultFixedPoint, 0, NULL, NULL);
 			checkErr(clError, "clEnqueueReadBuffer");
 
 			int arg = 0;
@@ -1040,16 +1079,20 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 			clError = clEnqueueNDRangeKernel(cmd_queues[0][0], reduce_ocl_kernel, 1, NULL, RglobalWorksize, NULL, 0, NULL, NULL);
             checkErr(clError, "clEnqueueNDRangeKernel");
 
-            clError = clEnqueueReadBuffer(cmd_queues[0][0], ocl_reduce_output_buffer, CL_TRUE, 0, 4 * 32 * sizeof(float), reductionoutput, 0, NULL, NULL);
+            clError = clEnqueueReadBuffer(cmd_queues[0][0], ocl_reduce_output_buffer, CL_TRUE, 0, 32 * sizeof(int), reductionoutputFixedPoint, 0, NULL, NULL);
 			checkErr(clError, "clEnqueueReadBuffer");
 
-			TooN::Matrix<TooN::Dynamic, TooN::Dynamic, float, TooN::Reference::RowMajor> values(reductionoutput, 4, 32);
+			for(int k=0; k<32; k++) {
+				reductionoutput[k] = FIXED2FLOAT(reductionoutputFixedPoint[k]);
+			}
+
+			/*TooN::Matrix<TooN::Dynamic, TooN::Dynamic, float, TooN::Reference::RowMajor> values(reductionoutput, 4, 32);
 
 			for (int j = 1; j < 4; ++j) {
 				values[0] += values[j];
 			}
 
-			/*reduceKernel(reductionoutput, trackingResult, computationSize,
+			reduceKernel(reductionoutput, trackingResult, computationSize,
 					localimagesize);*/
 
 			if (updatePoseKernel(pose, reductionoutput, icp_threshold))
