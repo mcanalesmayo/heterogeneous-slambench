@@ -11,8 +11,9 @@
 
 /************** TYPES ***************/
 
-#define FRACT_BITS_D2 8
-#define MULT(x, y) ( ((x) >> FRACT_BITS_D2) * ((y) >> FRACT_BITS_D2) )
+#define FRACT_BITS 16
+#define FRACT_BITS_D2 FRACT_BITS/2
+#define MULT(x, y) ( ((x >> FRACT_BITS_D2) * (y >> FRACT_BITS_D2)) )
 
 typedef struct sTrackDataFixedPoint {
 	int result;
