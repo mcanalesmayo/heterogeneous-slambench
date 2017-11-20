@@ -11,28 +11,28 @@
 
 /************** TYPES ***************/
 
-#define FRACT_BITS 16
+#define FRACT_BITS 32
 #define FRACT_BITS_D2 FRACT_BITS/2
+#define INT2FIXED(x) ( (x) << FRACT_BITS )
 #define MULT(x, y) ( ((x >> FRACT_BITS_D2) * (y >> FRACT_BITS_D2)) )
 
 typedef struct sTrackDataFixedPoint {
-	int result;
-	int error;
-	int J[6];
+	long result;
+	long error;
+	long J[6];
 } TrackDataFixedPoint;
 
 __kernel void reduceKernel (
-		__global int * restrict out,
+		__global long * restrict out,
 		__global const TrackDataFixedPoint * restrict J,
 		const uint2 JSize,
 		const uint2 size
 ) {
 	uint threadIdx = get_global_id(0);
-	uint globalSize = get_global_size(0);
 
-	int sums[32];
-	int * restrict jtj = sums + 7;
-	int * restrict info = sums + 28;
+	long sums[32];
+	long * restrict jtj = sums + 7;
+	long * restrict info = sums + 28;
 
 	uint y, x, i;
 
@@ -52,6 +52,7 @@ __kernel void reduceKernel (
 
 			// Error part
 			//sums[0] += row.error * row.error;
+			//printf("row.error = %d, ^2 = %d\n", row.error, MULT(row.error, row.error));
 			sums[0] += MULT(row.error, row.error);
 
 			// JTe part
