@@ -9,6 +9,7 @@
 #include <kernels.h>
 
 #include "common_opencl.h"
+#include "half_float_host.h"
 
 #include <TooN/TooN.h>
 #include <TooN/se3.h>
@@ -43,21 +44,6 @@
 
 #endif
 
-#define FRACT_BITS 32
-#define FRACT_BITS_D2 FRACT_BITS/2
-#define FIXED_ONE ( 1 << FRACT_BITS )
-#define INT2FIXED(x) ( (x) << FRACT_BITS )
-#define FLOAT2FIXED(x) ( (long)((x) * (1L << FRACT_BITS)) )
-#define FIXED2INT(x) ( (x) >> FRACT_BITS )
-#define FIXED2FLOAT(x) ( ((float)(x)) / (1L << FRACT_BITS) )
-#define MULT(x, y) ( ((x >> FRACT_BITS_D2) * (y >> FRACT_BITS_D2)) )
-
-typedef struct sTrackDataFixedPoint {
-	long result;
-	long error;
-	long J[6];
-} TrackDataFixedPoint;
-
 cl_kernel reduce_ocl_kernel;
 
 cl_mem ocl_reduce_output_buffer = NULL;
@@ -79,9 +65,9 @@ float3 * normal;
 
 // intra-frame
 TrackData * trackingResult;
-TrackDataFixedPoint * trackingResultFixedPoint;
+TrackDataHalfFloat * trackingResultHalfFloat;
 float* reductionoutput;
-long* reductionoutputFixedPoint;
+half* reductionoutputHalfFloat;
 float ** ScaledDepth;
 float * floatDepth;
 Matrix4 oldPose;
@@ -123,7 +109,7 @@ void Kfusion::languageSpecificConstructor() {
 	checkErr(clError, "clCreateBuffer");
 	ocl_reduce_output_buffer = clCreateBuffer(contexts[0], CL_MEM_WRITE_ONLY, 32 * number_of_groups * sizeof(float), NULL, &clError);
 	checkErr(clError, "clCreateBuffer");*/
-	ocl_trackingResult = clCreateBuffer(contexts[0], CL_MEM_READ_WRITE, sizeof(TrackDataFixedPoint) * computationSize.x * computationSize.y, NULL, &clError);
+	ocl_trackingResult = clCreateBuffer(contexts[0], CL_MEM_READ_WRITE, sizeof(TrackDataHalfFloat) * computationSize.x * computationSize.y, NULL, &clError);
 	checkErr(clError, "clCreateBuffer");
 	ocl_reduce_output_buffer = clCreateBuffer(contexts[0], CL_MEM_WRITE_ONLY, 4 * 32 * sizeof(float), NULL, &clError);
 	checkErr(clError, "clCreateBuffer");
@@ -131,7 +117,7 @@ void Kfusion::languageSpecificConstructor() {
 
 	// internal buffers to initialize
 	reductionoutput = (float*) calloc(sizeof(float) * 32, 1);
-	reductionoutputFixedPoint = (long*) calloc(sizeof(long) * 32, 1);
+	reductionoutputHalfFloat = (half*) calloc(sizeof(half) * 32, 1);
 
 	ScaledDepth = (float**) calloc(sizeof(float*) * iterations.size(), 1);
 	inputVertex = (float3**) calloc(sizeof(float3*) * iterations.size(), 1);
@@ -157,8 +143,8 @@ void Kfusion::languageSpecificConstructor() {
 			sizeof(float3) * computationSize.x * computationSize.y, 1);
 	trackingResult = (TrackData*) calloc(
 			sizeof(TrackData) * computationSize.x * computationSize.y, 1);
-	trackingResultFixedPoint = (TrackDataFixedPoint*) calloc(
-			sizeof(TrackDataFixedPoint) * computationSize.x * computationSize.y, 1);
+	trackingResultHalfFloat = (TrackDataHalfFloat*) calloc(
+			sizeof(TrackDataHalfFloat) * computationSize.x * computationSize.y, 1);
 
 	// ********* BEGIN : Generate the gaussian *************
 	size_t gaussianS = radius * 2 + 1;
@@ -192,10 +178,10 @@ Kfusion::~Kfusion() {
 
 	free(floatDepth);
 	free(trackingResult);
-	free(trackingResultFixedPoint);
+	free(trackingResultHalfFloat);
 
 	free(reductionoutput);
-	free(reductionoutputFixedPoint);
+	free(reductionoutputHalfFloat);
 	for (unsigned int i = 0; i < iterations.size(); ++i) {
 		free(ScaledDepth[i]);
 		free(inputVertex[i]);
@@ -538,7 +524,7 @@ void reduceKernel(float * out, TrackData* J, const uint2 Jsize,
 			for(int i = 0; i < 32; ++i) { // copy over to shared memory
 				S[sline][i] = sums[i];
 			}
-			// WE NO LONGER NEED TO DO THIS AS the threads execute sequentially inside a for loop
+			// WE NO halfER NEED TO DO THIS AS the threads execute sequentially inside a for loop
 
 		} // threads now execute as a for loop.
 		  //so the __syncthreads() is irrelevant
@@ -1029,14 +1015,14 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 
 			for (int x=0; x<computationSize.x; x++) {
 				for (int y=0; y<computationSize.y; y++) {
-					trackingResultFixedPoint[x+y*computationSize.x].result = trackingResult[x+y*computationSize.x].result;
-					trackingResultFixedPoint[x+y*computationSize.x].error = FLOAT2FIXED(trackingResult[x+y*computationSize.x].error);
+					trackingResultHalfFloat[x+y*computationSize.x].result = trackingResult[x+y*computationSize.x].result;
+					trackingResultHalfFloat[x+y*computationSize.x].error = FloatToHalf(trackingResult[x+y*computationSize.x].error);
 					for (int k=0; k<6; k++) {
-						trackingResultFixedPoint[x+y*computationSize.x].J[k] = FLOAT2FIXED(trackingResult[x+y*computationSize.x].J[k]);
+						trackingResultHalfFloat[x+y*computationSize.x].J[k] = FloatToHalf(trackingResult[x+y*computationSize.x].J[k]);
 					}
 				}
 			}
-			clEnqueueWriteBuffer(cmd_queues[0][0], ocl_trackingResult, CL_TRUE, 0, sizeof(TrackDataFixedPoint) * (computationSize.x * computationSize.y), trackingResultFixedPoint, 0, NULL, NULL);
+			clEnqueueWriteBuffer(cmd_queues[0][0], ocl_trackingResult, CL_TRUE, 0, sizeof(TrackDataHalfFloat) * (computationSize.x * computationSize.y), trackingResultHalfFloat, 0, NULL, NULL);
 			checkErr(clError, "clEnqueueReadBuffer");
 
 			int arg = 0;
@@ -1077,14 +1063,11 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 			clError = clEnqueueNDRangeKernel(cmd_queues[0][0], reduce_ocl_kernel, 1, NULL, RglobalWorksize, RlocalWorksize, 0, NULL, NULL);
             checkErr(clError, "clEnqueueNDRangeKernel");
 
-            clError = clEnqueueReadBuffer(cmd_queues[0][0], ocl_reduce_output_buffer, CL_TRUE, 0, 32 * sizeof(long), reductionoutputFixedPoint, 0, NULL, NULL);
+            clError = clEnqueueReadBuffer(cmd_queues[0][0], ocl_reduce_output_buffer, CL_TRUE, 0, 32 * sizeof(half), reductionoutputHalfFloat, 0, NULL, NULL);
 			checkErr(clError, "clEnqueueReadBuffer");
 
-			for(int k=0; k<28; k++) {
-				reductionoutput[k] = FIXED2FLOAT(reductionoutputFixedPoint[k]);
-			}
-			for(int k=28; k<32; k++) {
-				reductionoutput[k] = (float) reductionoutputFixedPoint[k];
+			for(int k=0; k<32; k++) {
+				reductionoutput[k] = HalfToFloat(reductionoutputHalfFloat[k]);
 			}
 
 			/*TooN::Matrix<TooN::Dynamic, TooN::Dynamic, float, TooN::Reference::RowMajor> values(reductionoutput, 4, 32);
