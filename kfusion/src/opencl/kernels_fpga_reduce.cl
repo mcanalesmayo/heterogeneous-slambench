@@ -11,30 +11,23 @@
 
 /************** TYPES ***************/
 
-#define FRACT_BITS 32
-#define FRACT_BITS_D2 FRACT_BITS/2
-#define INT2FIXED(x) ( (x) << FRACT_BITS )
-#define MULT(x, y) ( ((x >> FRACT_BITS_D2) * (y >> FRACT_BITS_D2)) )
-
-typedef struct sTrackDataFixedPoint {
-	long result;
-	long error;
-	long J[6];
-} TrackDataFixedPoint;
+#include "fixed_point.h"
 
 __kernel void reduceKernel (
-		__global long * restrict out,
+		__global int * restrict out,
 		__global const TrackDataFixedPoint * restrict J,
 		const uint2 JSize,
 		const uint2 size
 ) {
 	uint threadIdx = get_global_id(0);
 
-	long sums[32];
-	long * restrict jtj = sums + 7;
-	long * restrict info = sums + 28;
+	int sums[32];
+	int * restrict jtj = sums + 7;
+	int * restrict info = sums + 28;
 
 	uint y, x, i;
+
+	int amin = 0, amax = 0, bmin = 0, bmax = 0;
 
 	for(i = 0; i < 32; ++i) {
 		sums[i] = 0;
@@ -53,44 +46,66 @@ __kernel void reduceKernel (
 			// Error part
 			//sums[0] += row.error * row.error;
 			//printf("row.error = %d, ^2 = %d\n", row.error, MULT(row.error, row.error));
-			sums[0] += MULT(row.error, row.error);
+			sums[0] += MULT(row.error, row.error, FRACT_BITS_ERROR);
 
 			// JTe part
 			for(i = 0; i < 6; ++i) {
-				sums[i+1] += MULT(row.error, row.J[i]);
+				//sums[i+1] += MULT(row.error >> (FRACT_BITS_ERROR - FRACT_BITS_J), row.J[i], FRACT_BITS_J);
+				sums[i+1] += FLOAT2FIXED(FIXED2FLOAT(row.error, FRACT_BITS_ERROR) * FIXED2FLOAT(row.J[i], FRACT_BITS_J), FRACT_BITS_J);
 			}
 
-			jtj[0] += MULT(row.J[0], row.J[0]);
-			jtj[1] += MULT(row.J[0], row.J[1]);
-			jtj[2] += MULT(row.J[0], row.J[2]);
-			jtj[3] += MULT(row.J[0], row.J[3]);
-			jtj[4] += MULT(row.J[0], row.J[4]);
-			jtj[5] += MULT(row.J[0], row.J[5]);
+			jtj[0] += MULT(row.J[0], row.J[0], FRACT_BITS_J);
+			jtj[1] += MULT(row.J[0], row.J[1], FRACT_BITS_J);
+			jtj[2] += MULT(row.J[0], row.J[2], FRACT_BITS_J);
+			jtj[3] += MULT(row.J[0], row.J[3], FRACT_BITS_J);
+			jtj[4] += MULT(row.J[0], row.J[4], FRACT_BITS_J);
+			jtj[5] += MULT(row.J[0], row.J[5], FRACT_BITS_J);
 
-			jtj[6] += MULT(row.J[1], row.J[1]);
-			jtj[7] += MULT(row.J[1], row.J[2]);
-			jtj[8] += MULT(row.J[1], row.J[3]);
-			jtj[9] += MULT(row.J[1], row.J[4]);
-			jtj[10] += MULT(row.J[1], row.J[5]);
+			jtj[6] += MULT(row.J[1], row.J[1], FRACT_BITS_J);
+			jtj[7] += MULT(row.J[1], row.J[2], FRACT_BITS_J);
+			jtj[8] += MULT(row.J[1], row.J[3], FRACT_BITS_J);
+			jtj[9] += MULT(row.J[1], row.J[4], FRACT_BITS_J);
+			jtj[10] += MULT(row.J[1], row.J[5], FRACT_BITS_J);
 
-			jtj[11] += MULT(row.J[2], row.J[2]);
-			jtj[12] += MULT(row.J[2], row.J[3]);
-			jtj[13] += MULT(row.J[2], row.J[4]);
-			jtj[14] += MULT(row.J[2], row.J[5]);
+			jtj[11] += MULT(row.J[2], row.J[2], FRACT_BITS_J);
+			jtj[12] += MULT(row.J[2], row.J[3], FRACT_BITS_J);
+			jtj[13] += MULT(row.J[2], row.J[4], FRACT_BITS_J);
+			jtj[14] += MULT(row.J[2], row.J[5], FRACT_BITS_J);
 
-			jtj[15] += MULT(row.J[3], row.J[3]);
-			jtj[16] += MULT(row.J[3], row.J[4]);
-			jtj[17] += MULT(row.J[3], row.J[5]);
+			jtj[15] += MULT(row.J[3], row.J[3], FRACT_BITS_J);
+			jtj[16] += MULT(row.J[3], row.J[4], FRACT_BITS_J);
+			jtj[17] += MULT(row.J[3], row.J[5], FRACT_BITS_J);
 
-			jtj[18] += MULT(row.J[4], row.J[4]);
-			jtj[19] += MULT(row.J[4], row.J[5]);
+			jtj[18] += MULT(row.J[4], row.J[4], FRACT_BITS_J);
+			jtj[19] += MULT(row.J[4], row.J[5], FRACT_BITS_J);
 
-			jtj[20] += MULT(row.J[5], row.J[5]);
+			jtj[20] += MULT(row.J[5], row.J[5], FRACT_BITS_J);
 
 			// extra info here
 			info[0] += 1;
+
+			for(i = 0; i < 7; i++) {
+				if (sums[i] < amin) {
+					amin = sums[i];
+				}
+				if (sums[i] > amax) {
+					amax = sums[i];
+				}
+			}
+
+			for(i = 7; i < 28; i++) {
+				if (sums[i] < bmin) {
+					bmin = sums[i];
+				}
+				if (sums[i] > bmax) {
+					bmax = sums[i];
+				}
+			}
 		}
 	}
+
+	printf("error & DOFs | min: %d, max: %d\n", amin, amax);
+	printf("J | min: %d, max: %d\n", bmin, bmax);
 
 	for(i = 0; i < 32; i++) {
 		out[i+threadIdx*32] = sums[i];

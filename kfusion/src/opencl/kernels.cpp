@@ -9,6 +9,7 @@
 #include <kernels.h>
 
 #include "common_opencl.h"
+#include "fixed_point.h"
 
 #include <TooN/TooN.h>
 #include <TooN/se3.h>
@@ -43,21 +44,6 @@
 
 #endif
 
-#define FRACT_BITS 32
-#define FRACT_BITS_D2 FRACT_BITS/2
-#define FIXED_ONE ( 1 << FRACT_BITS )
-#define INT2FIXED(x) ( (x) << FRACT_BITS )
-#define FLOAT2FIXED(x) ( (long)((x) * (1L << FRACT_BITS)) )
-#define FIXED2INT(x) ( (x) >> FRACT_BITS )
-#define FIXED2FLOAT(x) ( ((float)(x)) / (1L << FRACT_BITS) )
-#define MULT(x, y) ( ((x >> FRACT_BITS_D2) * (y >> FRACT_BITS_D2)) )
-
-typedef struct sTrackDataFixedPoint {
-	long result;
-	long error;
-	long J[6];
-} TrackDataFixedPoint;
-
 cl_kernel reduce_ocl_kernel;
 
 cl_mem ocl_reduce_output_buffer = NULL;
@@ -81,7 +67,7 @@ float3 * normal;
 TrackData * trackingResult;
 TrackDataFixedPoint * trackingResultFixedPoint;
 float* reductionoutput;
-long* reductionoutputFixedPoint;
+int* reductionoutputFixedPoint;
 float ** ScaledDepth;
 float * floatDepth;
 Matrix4 oldPose;
@@ -131,7 +117,7 @@ void Kfusion::languageSpecificConstructor() {
 
 	// internal buffers to initialize
 	reductionoutput = (float*) calloc(sizeof(float) * 32, 1);
-	reductionoutputFixedPoint = (long*) calloc(sizeof(long) * 32, 1);
+	reductionoutputFixedPoint = (int*) calloc(sizeof(int) * 32, 1);
 
 	ScaledDepth = (float**) calloc(sizeof(float*) * iterations.size(), 1);
 	inputVertex = (float3**) calloc(sizeof(float3*) * iterations.size(), 1);
@@ -538,7 +524,7 @@ void reduceKernel(float * out, TrackData* J, const uint2 Jsize,
 			for(int i = 0; i < 32; ++i) { // copy over to shared memory
 				S[sline][i] = sums[i];
 			}
-			// WE NO LONGER NEED TO DO THIS AS the threads execute sequentially inside a for loop
+			// WE NO intER NEED TO DO THIS AS the threads execute sequentially inside a for loop
 
 		} // threads now execute as a for loop.
 		  //so the __syncthreads() is irrelevant
@@ -1030,9 +1016,9 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 			for (int x=0; x<computationSize.x; x++) {
 				for (int y=0; y<computationSize.y; y++) {
 					trackingResultFixedPoint[x+y*computationSize.x].result = trackingResult[x+y*computationSize.x].result;
-					trackingResultFixedPoint[x+y*computationSize.x].error = FLOAT2FIXED(trackingResult[x+y*computationSize.x].error);
+					trackingResultFixedPoint[x+y*computationSize.x].error = FLOAT2FIXED(trackingResult[x+y*computationSize.x].error, FRACT_BITS_ERROR);
 					for (int k=0; k<6; k++) {
-						trackingResultFixedPoint[x+y*computationSize.x].J[k] = FLOAT2FIXED(trackingResult[x+y*computationSize.x].J[k]);
+						trackingResultFixedPoint[x+y*computationSize.x].J[k] = FLOAT2FIXED(trackingResult[x+y*computationSize.x].J[k], FRACT_BITS_J);
 					}
 				}
 			}
@@ -1077,11 +1063,12 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 			clError = clEnqueueNDRangeKernel(cmd_queues[0][0], reduce_ocl_kernel, 1, NULL, RglobalWorksize, RlocalWorksize, 0, NULL, NULL);
             checkErr(clError, "clEnqueueNDRangeKernel");
 
-            clError = clEnqueueReadBuffer(cmd_queues[0][0], ocl_reduce_output_buffer, CL_TRUE, 0, 32 * sizeof(long), reductionoutputFixedPoint, 0, NULL, NULL);
+            clError = clEnqueueReadBuffer(cmd_queues[0][0], ocl_reduce_output_buffer, CL_TRUE, 0, 32 * sizeof(int), reductionoutputFixedPoint, 0, NULL, NULL);
 			checkErr(clError, "clEnqueueReadBuffer");
 
-			for(int k=0; k<28; k++) {
-				reductionoutput[k] = FIXED2FLOAT(reductionoutputFixedPoint[k]);
+			reductionoutput[0] = FIXED2FLOAT(reductionoutputFixedPoint[0], FRACT_BITS_ERROR);
+			for(int k=1; k<28; k++) {
+				reductionoutput[k] = FIXED2FLOAT(reductionoutputFixedPoint[k], FRACT_BITS_J);
 			}
 			for(int k=28; k<32; k++) {
 				reductionoutput[k] = (float) reductionoutputFixedPoint[k];
