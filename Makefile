@@ -10,6 +10,7 @@ COMMIT_HASH=$(shell git rev-parse --verify HEAD)
 ROOT_DIR=$(shell pwd)
 TOON_DIR=${ROOT_DIR}/TooN/install_dir
 TOON_INCLUDE_DIR=${TOON_DIR}/include/
+EMULATE=$(emulate)
 
 all : build
 
@@ -50,7 +51,7 @@ livingRoom%.gt.freiburg :
 
 %.opencl.log  : living_room_traj%_loop.raw livingRoom%.gt.freiburg
 	$(MAKE) -C build  $(MFLAGS) kfusion-benchmark-opencl oclwrapper
-	KERNEL_TIMINGS=1 LD_PRELOAD=./build/kfusion/thirdparty/liboclwrapper.so ./build/kfusion/kfusion-benchmark-opencl $($(*F)) -i  living_room_traj$(*F)_loop.raw -o benchmark.$@ 2> oclwrapper.$@
+	if ${EMULATE} == true; then CL_CONTEXT_EMULATOR_DEVICE_ALTERA=1 KERNEL_TIMINGS=1 LD_PRELOAD=./build/kfusion/thirdparty/liboclwrapper.so ./build/kfusion/kfusion-benchmark-opencl $($(*F)) -i  living_room_traj$(*F)_loop.raw -o benchmark.$@ 2> oclwrapper.$@; else KERNEL_TIMINGS=1 LD_PRELOAD=./build/kfusion/thirdparty/liboclwrapper.so ./build/kfusion/kfusion-benchmark-opencl $($(*F)) -i  living_room_traj$(*F)_loop.raw -o benchmark.$@ 2> oclwrapper.$@; fi
 	cat  oclwrapper.$@ |grep -E ".+ [0-9]+ [0-9]+ [0-9]+" |cut -d" " -f1,4 >   kernels.$@
 	./kfusion/thirdparty/checkPos.py benchmark.$@  livingRoom$(*F).gt.freiburg ${TIMESTAMP} ${COMMIT_HASH} ${ROOT_DIR}/$@.pos.csv > resume.$@
 	./kfusion/thirdparty/checkKernels.py kernels.$@ ${TIMESTAMP} ${COMMIT_HASH} ${ROOT_DIR}/$@.kernels.csv >> resume.$@
