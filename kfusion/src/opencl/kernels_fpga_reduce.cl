@@ -13,6 +13,7 @@
 
 #include "fixed_point.h"
 
+__attribute__((reqd_work_group_size(1,1,1)))
 __kernel void reduceKernel (
 		__global int * restrict out,
 		__global const TrackDataFixedPoint * restrict J,

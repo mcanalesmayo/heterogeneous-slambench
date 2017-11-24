@@ -117,7 +117,7 @@ void Kfusion::languageSpecificConstructor() {
 
 	// internal buffers to initialize
 	reductionoutput = (float*) calloc(sizeof(float) * 32, 1);
-	reductionoutputFixedPoint = (int*) calloc(sizeof(int) * 32, 1);
+	posix_memalign((void **) &reductionoutputFixedPoint, 64, sizeof(int) * 32);
 
 	ScaledDepth = (float**) calloc(sizeof(float*) * iterations.size(), 1);
 	inputVertex = (float3**) calloc(sizeof(float3*) * iterations.size(), 1);
@@ -143,8 +143,7 @@ void Kfusion::languageSpecificConstructor() {
 			sizeof(float3) * computationSize.x * computationSize.y, 1);
 	trackingResult = (TrackData*) calloc(
 			sizeof(TrackData) * computationSize.x * computationSize.y, 1);
-	trackingResultFixedPoint = (TrackDataFixedPoint*) calloc(
-			sizeof(TrackDataFixedPoint) * computationSize.x * computationSize.y, 1);
+	posix_memalign((void **) &trackingResultFixedPoint, 64, sizeof(TrackDataFixedPoint) * computationSize.x * computationSize.y);
 
 	// ********* BEGIN : Generate the gaussian *************
 	size_t gaussianS = radius * 2 + 1;
