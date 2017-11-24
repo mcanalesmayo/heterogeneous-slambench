@@ -43,6 +43,8 @@
 
 #endif
 
+#define NUM_THREADS_REDUCE_KERNEL 60
+
 cl_kernel reduce_ocl_kernel;
 
 cl_mem ocl_reduce_output_buffer = NULL;
@@ -106,12 +108,12 @@ void Kfusion::languageSpecificConstructor() {
 	checkErr(clError, "clCreateBuffer");
 	/*ocl_reduce_output_buffer = clCreateBuffer(contexts[0], CL_MEM_WRITE_ONLY, 32 * number_of_groups * sizeof(float), NULL, &clError);
 	checkErr(clError, "clCreateBuffer");*/
-	ocl_reduce_output_buffer = clCreateBuffer(contexts[0], CL_MEM_WRITE_ONLY, 4 * 32 * sizeof(float), NULL, &clError);
+	ocl_reduce_output_buffer = clCreateBuffer(contexts[0], CL_MEM_WRITE_ONLY, NUM_THREADS_REDUCE_KERNEL * 32 * sizeof(float), NULL, &clError);
 	checkErr(clError, "clCreateBuffer");
 
 
 	// internal buffers to initialize
-	reductionoutput = (float*) calloc(sizeof(float) * 8 * 32, 1);
+	posix_memalign((void **) &reductionoutput, 64, sizeof(float) * NUM_THREADS_REDUCE_KERNEL * 32);
 
 	ScaledDepth = (float**) calloc(sizeof(float*) * iterations.size(), 1);
 	inputVertex = (float3**) calloc(sizeof(float3*) * iterations.size(), 1);
@@ -135,8 +137,7 @@ void Kfusion::languageSpecificConstructor() {
 			sizeof(float3) * computationSize.x * computationSize.y, 1);
 	normal = (float3*) calloc(
 			sizeof(float3) * computationSize.x * computationSize.y, 1);
-	trackingResult = (TrackData*) calloc(
-			sizeof(TrackData) * computationSize.x * computationSize.y, 1);
+	posix_memalign((void **) &trackingResult, 64, sizeof(TrackData) * computationSize.x * computationSize.y);
 
 	// ********* BEGIN : Generate the gaussian *************
 	size_t gaussianS = radius * 2 + 1;
@@ -803,7 +804,7 @@ bool updatePoseKernel(Matrix4 & pose, const float * output,
 	// Update the pose regarding the tracking result
 	/*TooN::Matrix<8, 32, const float, TooN::Reference::RowMajor> values(output);
 	TooN::Vector<6> x = solve(values[0].slice<1, 27>());*/
-	TooN::Matrix<4, 32, const float, TooN::Reference::RowMajor> values(output);
+	TooN::Matrix<NUM_THREADS_REDUCE_KERNEL, 32, const float, TooN::Reference::RowMajor> values(output);
 	TooN::Vector<6> x = solve(values[0].slice<1, 27>());
 	TooN::SE3<> delta(x);
 	pose = toMatrix4(delta) * pose;
@@ -1036,16 +1037,16 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 				values[0] += values[j];
 			}*/
 
-			size_t RglobalWorksize[1] = { 4 };
+			size_t RglobalWorksize[1] = { NUM_THREADS_REDUCE_KERNEL };
 			clError = clEnqueueNDRangeKernel(cmd_queues[0][0], reduce_ocl_kernel, 1, NULL, RglobalWorksize, NULL, 0, NULL, NULL);
             checkErr(clError, "clEnqueueNDRangeKernel");
 
-            clError = clEnqueueReadBuffer(cmd_queues[0][0], ocl_reduce_output_buffer, CL_TRUE, 0, 4 * 32 * sizeof(float), reductionoutput, 0, NULL, NULL);
+            clError = clEnqueueReadBuffer(cmd_queues[0][0], ocl_reduce_output_buffer, CL_TRUE, 0, NUM_THREADS_REDUCE_KERNEL * 32 * sizeof(float), reductionoutput, 0, NULL, NULL);
 			checkErr(clError, "clEnqueueReadBuffer");
 
-			TooN::Matrix<TooN::Dynamic, TooN::Dynamic, float, TooN::Reference::RowMajor> values(reductionoutput, 4, 32);
+			TooN::Matrix<TooN::Dynamic, TooN::Dynamic, float, TooN::Reference::RowMajor> values(reductionoutput, NUM_THREADS_REDUCE_KERNEL, 32);
 
-			for (int j = 1; j < 4; ++j) {
+			for (int j = 1; j < NUM_THREADS_REDUCE_KERNEL; ++j) {
 				values[0] += values[j];
 			}
 
