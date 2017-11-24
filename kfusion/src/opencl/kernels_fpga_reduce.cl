@@ -27,8 +27,6 @@ __kernel void reduceKernel (
 
 	uint y, x, i;
 
-	int amin = 0, amax = 0, bmin = 0, bmax = 0;
-
 	for(i = 0; i < 32; ++i) {
 		sums[i] = 0;
 	}
@@ -83,29 +81,8 @@ __kernel void reduceKernel (
 
 			// extra info here
 			info[0] += 1;
-
-			for(i = 0; i < 7; i++) {
-				if (sums[i] < amin) {
-					amin = sums[i];
-				}
-				if (sums[i] > amax) {
-					amax = sums[i];
-				}
-			}
-
-			for(i = 7; i < 28; i++) {
-				if (sums[i] < bmin) {
-					bmin = sums[i];
-				}
-				if (sums[i] > bmax) {
-					bmax = sums[i];
-				}
-			}
 		}
 	}
-
-	printf("error & DOFs | min: %d, max: %d\n", amin, amax);
-	printf("J | min: %d, max: %d\n", bmin, bmax);
 
 	for(i = 0; i < 32; i++) {
 		out[i+threadIdx*32] = sums[i];
