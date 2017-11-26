@@ -1,5 +1,6 @@
 #/usr/bin/python
 
+import os
 import sys
 import csv
 from subprocess import call
@@ -18,6 +19,14 @@ DATASET = sys.argv[2]
 PLATFORM = sys.argv[3]
 
 ANALYZE_LOGS = ['pos', 'kernels']
+
+# clean benchmark files
+KERNELS_FILE = DATASET + '.' + PLATFORM + '.log.kernels.csv'
+POS_FILE = DATASET + '.' + PLATFORM + '.log.pos.csv'
+print 'Removing ' + KERNELS_FILE
+os.remove(KERNELS_FILE)
+print 'Removing ' + POS_FILE
+os.remove(POS_FILE)
 
 proc_params = ['make', '.'.join([DATASET, PLATFORM, 'log'])]
 
