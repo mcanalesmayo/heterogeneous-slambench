@@ -16,76 +16,95 @@
 __attribute__((reqd_work_group_size(1,1,1)))
 __kernel void reduceKernel (
 		__global int * restrict out,
+		__global float * restrict outJTe,
 		__global const TrackDataFixedPoint * restrict J,
 		const uint2 JSize,
 		const uint2 size
 ) {
 	uint threadIdx = get_global_id(0);
+	uint globalSize = get_global_size(0);
+	uint batchSize = (JSize.y * JSize.x) / globalSize;
+	uint startOfBatch = threadIdx * batchSize;
 
-	int sums[32];
-	int * restrict jtj = sums + 7;
-	int * restrict info = sums + 28;
+	int sums[26];
+	int * restrict jtj = sums + 1;
+	int * restrict info = sums + 22;
+	float sumsJTe[6];
 
-	uint y, x, i;
+	uint i, k;
+	float pixelError;
+	int pixelErrorPrep, rowJAux[6];
 
-	for(i = 0; i < 32; ++i) {
+	for(i = 0; i < 26; ++i) {
 		sums[i] = 0;
 	}
+	for(i = 0; i < 6; ++i) {
+		sumsJTe[i] = 0.0f;
+	}
 
-	for(y = 0; y < size.y; y++) {
-		for(x = 0; x < size.x; x++) {
-			const TrackDataFixedPoint row = J[x + y * JSize.x];
-			if(row.result < 1) {
-				info[1] += row.result == -4 ? 1 : 0;
-				info[2] += row.result == -5 ? 1 : 0;
-				info[3] += row.result > -4 ? 1 : 0;
-				continue;
+	for(i = 0; i < batchSize; i++) {
+		const TrackDataFixedPoint row = J[startOfBatch + i];
+		if(row.result < 1) {
+			if (row.result == -4) {
+				info[1] += 1;
+			} else if (row.result == -5) {
+				info[2] += 1;
+			} else if (row.result > -4) {
+				info[3] += 1;
+			}
+		} else {
+			// Prepare for fixed point computation
+			pixelErrorPrep = PREPARE_FOR_MULT(row.error, FRACT_BITS_ERROR_D2);
+			for(k = 0; k < 6; k++) {
+				rowJAux[k] = PREPARE_FOR_MULT(row.J[k], FRACT_BITS_J_D2);
 			}
 
+			// Compute output
 			// Error part
-			//sums[0] += row.error * row.error;
-			//printf("row.error = %d, ^2 = %d\n", row.error, MULT(row.error, row.error));
-			sums[0] += MULT(row.error, row.error, FRACT_BITS_ERROR);
+			sums[0] += PREPARED_MULT(pixelErrorPrep, pixelErrorPrep);
 
 			// JTe part
-			for(i = 0; i < 6; ++i) {
-				//sums[i+1] += MULT(row.error >> (FRACT_BITS_ERROR - FRACT_BITS_J), row.J[i], FRACT_BITS_J);
-				sums[i+1] += FLOAT2FIXED(FIXED2FLOAT(row.error, FRACT_BITS_ERROR) * FIXED2FLOAT(row.J[i], FRACT_BITS_J), FRACT_BITS_J);
+			pixelError = FIXED2FLOAT(row.error, FRACT_BITS_ERROR);
+			for(k = 0; k < 6; k++) {
+				sumsJTe[k] += pixelError * FIXED2FLOAT(row.J[k], FRACT_BITS_J);
 			}
 
-			jtj[0] += MULT(row.J[0], row.J[0], FRACT_BITS_J);
-			jtj[1] += MULT(row.J[0], row.J[1], FRACT_BITS_J);
-			jtj[2] += MULT(row.J[0], row.J[2], FRACT_BITS_J);
-			jtj[3] += MULT(row.J[0], row.J[3], FRACT_BITS_J);
-			jtj[4] += MULT(row.J[0], row.J[4], FRACT_BITS_J);
-			jtj[5] += MULT(row.J[0], row.J[5], FRACT_BITS_J);
+			jtj[0] += PREPARED_MULT(rowJAux[0], rowJAux[0]);
+			jtj[1] += PREPARED_MULT(rowJAux[0], rowJAux[1]);
+			jtj[2] += PREPARED_MULT(rowJAux[0], rowJAux[2]);
+			jtj[3] += PREPARED_MULT(rowJAux[0], rowJAux[3]);
+			jtj[4] += PREPARED_MULT(rowJAux[0], rowJAux[4]);
+			jtj[5] += PREPARED_MULT(rowJAux[0], rowJAux[5]);
 
-			jtj[6] += MULT(row.J[1], row.J[1], FRACT_BITS_J);
-			jtj[7] += MULT(row.J[1], row.J[2], FRACT_BITS_J);
-			jtj[8] += MULT(row.J[1], row.J[3], FRACT_BITS_J);
-			jtj[9] += MULT(row.J[1], row.J[4], FRACT_BITS_J);
-			jtj[10] += MULT(row.J[1], row.J[5], FRACT_BITS_J);
+			jtj[6] += PREPARED_MULT(rowJAux[1], rowJAux[1]);
+			jtj[7] += PREPARED_MULT(rowJAux[1], rowJAux[2]);
+			jtj[8] += PREPARED_MULT(rowJAux[1], rowJAux[3]);
+			jtj[9] += PREPARED_MULT(rowJAux[1], rowJAux[4]);
+			jtj[10] += PREPARED_MULT(rowJAux[1], rowJAux[5]);
 
-			jtj[11] += MULT(row.J[2], row.J[2], FRACT_BITS_J);
-			jtj[12] += MULT(row.J[2], row.J[3], FRACT_BITS_J);
-			jtj[13] += MULT(row.J[2], row.J[4], FRACT_BITS_J);
-			jtj[14] += MULT(row.J[2], row.J[5], FRACT_BITS_J);
+			jtj[11] += PREPARED_MULT(rowJAux[2], rowJAux[2]);
+			jtj[12] += PREPARED_MULT(rowJAux[2], rowJAux[3]);
+			jtj[13] += PREPARED_MULT(rowJAux[2], rowJAux[4]);
+			jtj[14] += PREPARED_MULT(rowJAux[2], rowJAux[5]);
 
-			jtj[15] += MULT(row.J[3], row.J[3], FRACT_BITS_J);
-			jtj[16] += MULT(row.J[3], row.J[4], FRACT_BITS_J);
-			jtj[17] += MULT(row.J[3], row.J[5], FRACT_BITS_J);
+			jtj[15] += PREPARED_MULT(rowJAux[3], rowJAux[3]);
+			jtj[16] += PREPARED_MULT(rowJAux[3], rowJAux[4]);
+			jtj[17] += PREPARED_MULT(rowJAux[3], rowJAux[5]);
 
-			jtj[18] += MULT(row.J[4], row.J[4], FRACT_BITS_J);
-			jtj[19] += MULT(row.J[4], row.J[5], FRACT_BITS_J);
+			jtj[18] += PREPARED_MULT(rowJAux[4], rowJAux[4]);
+			jtj[19] += PREPARED_MULT(rowJAux[4], rowJAux[5]);
 
-			jtj[20] += MULT(row.J[5], row.J[5], FRACT_BITS_J);
+			jtj[20] += PREPARED_MULT(rowJAux[5], rowJAux[5]);
 
 			// extra info here
 			info[0] += 1;
 		}
 	}
 
-	for(i = 0; i < 32; i++) {
+	for(i = 0; i < 26; i++) {
 		out[i+threadIdx*32] = sums[i];
+	}
+	for(i = 0; i < 6; i++) {
+		outJTe[i+threadIdx*32] = sumsJTe[i];
 	}
 }

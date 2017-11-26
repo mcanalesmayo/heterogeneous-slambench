@@ -46,7 +46,8 @@
 
 cl_kernel reduce_ocl_kernel;
 
-cl_mem ocl_reduce_output_buffer = NULL;
+cl_mem ocl_reduce_output_buffer_out = NULL;
+cl_mem ocl_reduce_output_buffer_outJTe = NULL;
 cl_mem ocl_trackingResult = NULL;
 
 // reduction parameters
@@ -107,17 +108,19 @@ void Kfusion::languageSpecificConstructor() {
 
 	/*ocl_trackingResult = clCreateBuffer(contexts[0], CL_MEM_READ_WRITE, sizeof(TrackData) * computationSize.x * computationSize.y, NULL, &clError);
 	checkErr(clError, "clCreateBuffer");
-	ocl_reduce_output_buffer = clCreateBuffer(contexts[0], CL_MEM_WRITE_ONLY, 32 * number_of_groups * sizeof(float), NULL, &clError);
+	ocl_reduce_output_buffer_out = clCreateBuffer(contexts[0], CL_MEM_WRITE_ONLY, 32 * number_of_groups * sizeof(float), NULL, &clError);
 	checkErr(clError, "clCreateBuffer");*/
 	ocl_trackingResult = clCreateBuffer(contexts[0], CL_MEM_READ_WRITE, sizeof(TrackDataFixedPoint) * computationSize.x * computationSize.y, NULL, &clError);
 	checkErr(clError, "clCreateBuffer");
-	ocl_reduce_output_buffer = clCreateBuffer(contexts[0], CL_MEM_WRITE_ONLY, 4 * 32 * sizeof(float), NULL, &clError);
+	ocl_reduce_output_buffer_out = clCreateBuffer(contexts[0], CL_MEM_WRITE_ONLY, 26 * sizeof(int), NULL, &clError);
+	checkErr(clError, "clCreateBuffer");
+	ocl_reduce_output_buffer_outJTe = clCreateBuffer(contexts[0], CL_MEM_WRITE_ONLY, 6 * sizeof(float), NULL, &clError);
 	checkErr(clError, "clCreateBuffer");
 
 
 	// internal buffers to initialize
 	reductionoutput = (float*) calloc(sizeof(float) * 32, 1);
-	posix_memalign((void **) &reductionoutputFixedPoint, 64, sizeof(int) * 32);
+	posix_memalign((void **) &reductionoutputFixedPoint, 64, 26 * sizeof(int));
 
 	ScaledDepth = (float**) calloc(sizeof(float*) * iterations.size(), 1);
 	inputVertex = (float3**) calloc(sizeof(float3*) * iterations.size(), 1);
@@ -169,10 +172,15 @@ Kfusion::~Kfusion() {
 		checkErr(clError, "clReleaseMem");
 		ocl_trackingResult = NULL;
 	}
-	if (ocl_reduce_output_buffer) {
-		clError = clReleaseMemObject(ocl_reduce_output_buffer);
+	if (ocl_reduce_output_buffer_out) {
+		clError = clReleaseMemObject(ocl_reduce_output_buffer_out);
 		checkErr(clError, "clReleaseMem");
-		ocl_reduce_output_buffer = NULL;
+		ocl_reduce_output_buffer_out = NULL;
+	}
+	if (ocl_reduce_output_buffer_outJTe) {
+		clError = clReleaseMemObject(ocl_reduce_output_buffer_outJTe);
+		checkErr(clError, "clReleaseMem");
+		ocl_reduce_output_buffer_outJTe = NULL;
 	}
 
 	free(floatDepth);
@@ -810,9 +818,7 @@ bool updatePoseKernel(Matrix4 & pose, const float * output,
 	bool res = false;
 	TICK();
 	// Update the pose regarding the tracking result
-	/*TooN::Matrix<8, 32, const float, TooN::Reference::RowMajor> values(output);
-	TooN::Vector<6> x = solve(values[0].slice<1, 27>());*/
-	TooN::Matrix<4, 32, const float, TooN::Reference::RowMajor> values(output);
+	TooN::Matrix<1, 32, const float, TooN::Reference::RowMajor> values(output);
 	TooN::Vector<6> x = solve(values[0].slice<1, 27>());
 	TooN::SE3<> delta(x);
 	pose = toMatrix4(delta) * pose;
@@ -1009,15 +1015,12 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 
 
 
-			/*clEnqueueWriteBuffer(cmd_queues[0][0], ocl_trackingResult, CL_TRUE, 0, sizeof(TrackData) * (computationSize.x * computationSize.y), trackingResult, 0, NULL, NULL);
-			checkErr(clError, "clEnqueueReadBuffer");*/
-
 			for (int x=0; x<computationSize.x; x++) {
 				for (int y=0; y<computationSize.y; y++) {
 					trackingResultFixedPoint[x+y*computationSize.x].result = trackingResult[x+y*computationSize.x].result;
 					trackingResultFixedPoint[x+y*computationSize.x].error = FLOAT2FIXED(trackingResult[x+y*computationSize.x].error, FRACT_BITS_ERROR);
-					for (int k=0; k<6; k++) {
-						trackingResultFixedPoint[x+y*computationSize.x].J[k] = FLOAT2FIXED(trackingResult[x+y*computationSize.x].J[k], FRACT_BITS_J);
+					for (int idx=0; idx<6; idx++) {
+						trackingResultFixedPoint[x+y*computationSize.x].J[idx] = FLOAT2FIXED(trackingResult[x+y*computationSize.x].J[idx], FRACT_BITS_J);
 					}
 				}
 			}
@@ -1026,7 +1029,10 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 
 			int arg = 0;
 			char errStr[20];
-			clError = clSetKernelArg(reduce_ocl_kernel, arg++, sizeof(cl_mem), &ocl_reduce_output_buffer);
+			clError = clSetKernelArg(reduce_ocl_kernel, arg++, sizeof(cl_mem), &ocl_reduce_output_buffer_out);
+			sprintf(errStr, "clSetKernelArg%d", arg);
+			checkErr(clError, errStr);
+			clError = clSetKernelArg(reduce_ocl_kernel, arg++, sizeof(cl_mem), &ocl_reduce_output_buffer_outJTe);
 			sprintf(errStr, "clSetKernelArg%d", arg);
 			checkErr(clError, errStr);
 			clError = clSetKernelArg(reduce_ocl_kernel, arg++, sizeof(cl_mem), &ocl_trackingResult);
@@ -1038,39 +1044,27 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 			clError = clSetKernelArg(reduce_ocl_kernel, arg++, sizeof(cl_uint2), &localimagesize);
 			sprintf(errStr, "clSetKernelArg%d", arg);
 			checkErr(clError, errStr);
-            /*clError = clSetKernelArg(reduce_ocl_kernel, arg++, size_of_group * 32 * sizeof(float), NULL);
-            sprintf(errStr, "clSetKernelArg%d", arg);
-            checkErr(clError, errStr);
-
-			size_t RglobalWorksize[1] = { size_of_group * number_of_groups };
-            size_t RlocalWorksize[1] = { size_of_group }; // Dont change it !
-
-            clError = clEnqueueNDRangeKernel(cmd_queues[0][0], reduce_ocl_kernel, 1, NULL, RglobalWorksize, RlocalWorksize, 0, NULL, NULL);
-            checkErr(clError, "clEnqueueNDRangeKernel");
-
-			clError = clEnqueueReadBuffer(cmd_queues[0][0], ocl_reduce_output_buffer, CL_TRUE, 0, 32 * number_of_groups * sizeof(float), reductionoutput, 0, NULL, NULL);
-			checkErr(clError, "clEnqueueReadBuffer");
-
-			TooN::Matrix<TooN::Dynamic, TooN::Dynamic, float, TooN::Reference::RowMajor> values(reductionoutput, number_of_groups, 32);
-
-			for (int j = 1; j < number_of_groups; ++j) {
-				values[0] += values[j];
-			}*/
 
 			size_t RglobalWorksize[1] = { 1 };
 			size_t RlocalWorksize[1] = { 1 };
 			clError = clEnqueueNDRangeKernel(cmd_queues[0][0], reduce_ocl_kernel, 1, NULL, RglobalWorksize, RlocalWorksize, 0, NULL, NULL);
             checkErr(clError, "clEnqueueNDRangeKernel");
 
-            clError = clEnqueueReadBuffer(cmd_queues[0][0], ocl_reduce_output_buffer, CL_TRUE, 0, 32 * sizeof(int), reductionoutputFixedPoint, 0, NULL, NULL);
+            clError = clEnqueueReadBuffer(cmd_queues[0][0], ocl_reduce_output_buffer_out, CL_TRUE, 0, 26 * sizeof(int), reductionoutputFixedPoint, 0, NULL, NULL);
+			checkErr(clError, "clEnqueueReadBuffer");
+			clError = clEnqueueReadBuffer(cmd_queues[0][0], ocl_reduce_output_buffer_outJTe, CL_TRUE, 0, 6 * sizeof(float), &reductionoutput[1], 0, NULL, NULL);
 			checkErr(clError, "clEnqueueReadBuffer");
 
+			//printf("reductionoutput[%d] = FIXEDTOFLOAT(reductionoutputFixedPoint[%d])\n", 0, 0);
+			//printf("read 6 floats into &reductionoutput[1]\n");
 			reductionoutput[0] = FIXED2FLOAT(reductionoutputFixedPoint[0], FRACT_BITS_ERROR);
-			for(int k=1; k<28; k++) {
-				reductionoutput[k] = FIXED2FLOAT(reductionoutputFixedPoint[k], FRACT_BITS_J);
+			for(int idx=1; idx<22; idx++) {
+				//printf("reductionoutput[%d] = FIXEDTOFLOAT(reductionoutputFixedPoint[%d])\n", idx+7, idx);
+				reductionoutput[idx+6] = FIXED2FLOAT(reductionoutputFixedPoint[idx], FRACT_BITS_J);
 			}
-			for(int k=28; k<32; k++) {
-				reductionoutput[k] = (float) reductionoutputFixedPoint[k];
+			for(int idx=22; idx<26; idx++) {
+				//printf("reductionoutput[%d] = (float) reductionoutputFixedPoint[%d]\n", idx+7, idx);
+				reductionoutput[idx+6] = (float) reductionoutputFixedPoint[idx];
 			}
 
 			/*TooN::Matrix<TooN::Dynamic, TooN::Dynamic, float, TooN::Reference::RowMajor> values(reductionoutput, 4, 32);
