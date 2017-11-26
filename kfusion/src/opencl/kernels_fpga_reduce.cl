@@ -102,9 +102,9 @@ __kernel void reduceKernel (
 	}
 
 	for(i = 0; i < 26; i++) {
-		out[i+threadIdx*32] = sums[i];
+		out[threadIdx*26 + i] = sums[i];
 	}
 	for(i = 0; i < 6; i++) {
-		outJTe[i+threadIdx*32] = sumsJTe[i];
+		outJTe[threadIdx*6 + i] = sumsJTe[i];
 	}
 }

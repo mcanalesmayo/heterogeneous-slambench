@@ -44,6 +44,8 @@
 
 #endif
 
+#define NUM_THREADS_REDUCE_KERNEL 800
+
 cl_kernel reduce_ocl_kernel;
 
 cl_mem ocl_reduce_output_buffer_out = NULL;
@@ -69,6 +71,7 @@ TrackData * trackingResult;
 TrackDataFixedPoint * trackingResultFixedPoint;
 float* reductionoutput;
 int* reductionoutputFixedPoint;
+float* reductionoutputFloat;
 float ** ScaledDepth;
 float * floatDepth;
 Matrix4 oldPose;
@@ -112,15 +115,17 @@ void Kfusion::languageSpecificConstructor() {
 	checkErr(clError, "clCreateBuffer");*/
 	ocl_trackingResult = clCreateBuffer(contexts[0], CL_MEM_READ_WRITE, sizeof(TrackDataFixedPoint) * computationSize.x * computationSize.y, NULL, &clError);
 	checkErr(clError, "clCreateBuffer");
-	ocl_reduce_output_buffer_out = clCreateBuffer(contexts[0], CL_MEM_WRITE_ONLY, 26 * sizeof(int), NULL, &clError);
+	ocl_reduce_output_buffer_out = clCreateBuffer(contexts[0], CL_MEM_WRITE_ONLY, NUM_THREADS_REDUCE_KERNEL * 26 * sizeof(int), NULL, &clError);
 	checkErr(clError, "clCreateBuffer");
-	ocl_reduce_output_buffer_outJTe = clCreateBuffer(contexts[0], CL_MEM_WRITE_ONLY, 6 * sizeof(float), NULL, &clError);
+	ocl_reduce_output_buffer_outJTe = clCreateBuffer(contexts[0], CL_MEM_WRITE_ONLY, NUM_THREADS_REDUCE_KERNEL * 6 * sizeof(float), NULL, &clError);
 	checkErr(clError, "clCreateBuffer");
 
 
 	// internal buffers to initialize
-	reductionoutput = (float*) calloc(sizeof(float) * 32, 1);
-	posix_memalign((void **) &reductionoutputFixedPoint, 64, 26 * sizeof(int));
+	reductionoutput = (float*) calloc(NUM_THREADS_REDUCE_KERNEL * sizeof(float) * 32, 1);
+	posix_memalign((void **) &reductionoutputFixedPoint, 64, NUM_THREADS_REDUCE_KERNEL * 26 * sizeof(int));
+	posix_memalign((void **) &reductionoutputFloat, 64, NUM_THREADS_REDUCE_KERNEL * 6 * sizeof(float));
+
 
 	ScaledDepth = (float**) calloc(sizeof(float*) * iterations.size(), 1);
 	inputVertex = (float3**) calloc(sizeof(float3*) * iterations.size(), 1);
@@ -189,6 +194,7 @@ Kfusion::~Kfusion() {
 
 	free(reductionoutput);
 	free(reductionoutputFixedPoint);
+	free(reductionoutputFloat);
 	for (unsigned int i = 0; i < iterations.size(); ++i) {
 		free(ScaledDepth[i]);
 		free(inputVertex[i]);
@@ -818,7 +824,7 @@ bool updatePoseKernel(Matrix4 & pose, const float * output,
 	bool res = false;
 	TICK();
 	// Update the pose regarding the tracking result
-	TooN::Matrix<1, 32, const float, TooN::Reference::RowMajor> values(output);
+	TooN::Matrix<NUM_THREADS_REDUCE_KERNEL, 32, const float, TooN::Reference::RowMajor> values(output);
 	TooN::Vector<6> x = solve(values[0].slice<1, 27>());
 	TooN::SE3<> delta(x);
 	pose = toMatrix4(delta) * pose;
@@ -1045,35 +1051,40 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 			sprintf(errStr, "clSetKernelArg%d", arg);
 			checkErr(clError, errStr);
 
-			size_t RglobalWorksize[1] = { 1 };
-			size_t RlocalWorksize[1] = { 1 };
-			clError = clEnqueueNDRangeKernel(cmd_queues[0][0], reduce_ocl_kernel, 1, NULL, RglobalWorksize, RlocalWorksize, 0, NULL, NULL);
+			size_t RglobalWorksize[1] = { NUM_THREADS_REDUCE_KERNEL };
+			clError = clEnqueueNDRangeKernel(cmd_queues[0][0], reduce_ocl_kernel, 1, NULL, RglobalWorksize, NULL, 0, NULL, NULL);
             checkErr(clError, "clEnqueueNDRangeKernel");
 
-            clError = clEnqueueReadBuffer(cmd_queues[0][0], ocl_reduce_output_buffer_out, CL_TRUE, 0, 26 * sizeof(int), reductionoutputFixedPoint, 0, NULL, NULL);
+            clError = clEnqueueReadBuffer(cmd_queues[0][0], ocl_reduce_output_buffer_out, CL_TRUE, 0, NUM_THREADS_REDUCE_KERNEL * 26 * sizeof(int), reductionoutputFixedPoint, 0, NULL, NULL);
 			checkErr(clError, "clEnqueueReadBuffer");
-			clError = clEnqueueReadBuffer(cmd_queues[0][0], ocl_reduce_output_buffer_outJTe, CL_TRUE, 0, 6 * sizeof(float), &reductionoutput[1], 0, NULL, NULL);
+			clError = clEnqueueReadBuffer(cmd_queues[0][0], ocl_reduce_output_buffer_outJTe, CL_TRUE, 0, NUM_THREADS_REDUCE_KERNEL * 6 * sizeof(float), reductionoutputFloat, 0, NULL, NULL);
 			checkErr(clError, "clEnqueueReadBuffer");
 
-			//printf("reductionoutput[%d] = FIXEDTOFLOAT(reductionoutputFixedPoint[%d])\n", 0, 0);
-			//printf("read 6 floats into &reductionoutput[1]\n");
-			reductionoutput[0] = FIXED2FLOAT(reductionoutputFixedPoint[0], FRACT_BITS_ERROR);
-			for(int idx=1; idx<22; idx++) {
-				//printf("reductionoutput[%d] = FIXEDTOFLOAT(reductionoutputFixedPoint[%d])\n", idx+7, idx);
-				reductionoutput[idx+6] = FIXED2FLOAT(reductionoutputFixedPoint[idx], FRACT_BITS_J);
-			}
-			for(int idx=22; idx<26; idx++) {
-				//printf("reductionoutput[%d] = (float) reductionoutputFixedPoint[%d]\n", idx+7, idx);
-				reductionoutput[idx+6] = (float) reductionoutputFixedPoint[idx];
+			uint idx, reductionIdx;
+			for (idx=0; idx<NUM_THREADS_REDUCE_KERNEL; idx++){
+				// error
+				reductionoutput[idx*32] = FIXED2FLOAT(reductionoutputFixedPoint[idx*26], FRACT_BITS_ERROR);
+				// jte
+				for (reductionIdx=1; reductionIdx<7; reductionIdx++) {
+					reductionoutput[idx*32 + reductionIdx] = reductionoutputFloat[idx*6 + reductionIdx - 1];
+				}
+				// jtj
+				for (reductionIdx=7; reductionIdx<28; reductionIdx++) {
+					reductionoutput[idx*32 + reductionIdx] = FIXED2FLOAT(reductionoutputFixedPoint[idx*26 + reductionIdx - 6], FRACT_BITS_J);
+				}
+				// info
+				for (reductionIdx=28; reductionIdx<32; reductionIdx++) {
+					reductionoutput[idx*32 + reductionIdx] = (float) reductionoutputFixedPoint[idx*26 + reductionIdx - 6];
+				}
 			}
 
-			/*TooN::Matrix<TooN::Dynamic, TooN::Dynamic, float, TooN::Reference::RowMajor> values(reductionoutput, 4, 32);
+			TooN::Matrix<TooN::Dynamic, TooN::Dynamic, float, TooN::Reference::RowMajor> values(reductionoutput, NUM_THREADS_REDUCE_KERNEL, 32);
 
-			for (int j = 1; j < 4; ++j) {
+			for (int j = 1; j < NUM_THREADS_REDUCE_KERNEL; ++j) {
 				values[0] += values[j];
 			}
 
-			reduceKernel(reductionoutput, trackingResult, computationSize,
+			/*reduceKernel(reductionoutput, trackingResult, computationSize,
 					localimagesize);*/
 
 			if (updatePoseKernel(pose, reductionoutput, icp_threshold))
