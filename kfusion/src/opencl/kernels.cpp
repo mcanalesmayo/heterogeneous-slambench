@@ -43,7 +43,7 @@
 
 #endif
 
-#define NUM_THREADS_REDUCE_KERNEL 60
+#define NUM_THREADS_REDUCE_KERNEL 800
 
 cl_kernel reduce_ocl_kernel;
 
