@@ -43,7 +43,7 @@
 
 #endif
 
-#define NUM_THREADS_REDUCE_KERNEL 800
+#define NUM_THREADS_REDUCE_KERNEL 1
 
 cl_kernel reduce_ocl_kernel;
 
@@ -557,7 +557,7 @@ void trackKernel(TrackData* output, const float3* inVertex,
 			pixel.x = pixelx;
 			pixel.y = pixely;
 
-			TrackData & row = output[pixel.x + pixel.y * refSize.x];
+			TrackData & row = output[pixel.x + pixel.y * inSize.x];
 
 			if (inNormal[pixel.x + pixel.y * inSize.x].x == KFUSION_INVALID) {
 				row.result = -1;
@@ -1001,7 +1001,7 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 
 
 
-			clEnqueueWriteBuffer(cmd_queues[0][0], ocl_trackingResult, CL_TRUE, 0, sizeof(TrackData) * (computationSize.x * computationSize.y), trackingResult, 0, NULL, NULL);
+			clEnqueueWriteBuffer(cmd_queues[0][0], ocl_trackingResult, CL_TRUE, 0, sizeof(TrackData) * (localimagesize.x * localimagesize.y), trackingResult, 0, NULL, NULL);
 			checkErr(clError, "clEnqueueReadBuffer");
 
 			int arg = 0;
@@ -1018,24 +1018,6 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 			clError = clSetKernelArg(reduce_ocl_kernel, arg++, sizeof(cl_uint2), &localimagesize);
 			sprintf(errStr, "clSetKernelArg%d", arg);
 			checkErr(clError, errStr);
-            /*clError = clSetKernelArg(reduce_ocl_kernel, arg++, size_of_group * 32 * sizeof(float), NULL);
-            sprintf(errStr, "clSetKernelArg%d", arg);
-            checkErr(clError, errStr);
-
-			size_t RglobalWorksize[1] = { size_of_group * number_of_groups };
-            size_t RlocalWorksize[1] = { size_of_group }; // Dont change it !
-
-            clError = clEnqueueNDRangeKernel(cmd_queues[0][0], reduce_ocl_kernel, 1, NULL, RglobalWorksize, RlocalWorksize, 0, NULL, NULL);
-            checkErr(clError, "clEnqueueNDRangeKernel");
-
-			clError = clEnqueueReadBuffer(cmd_queues[0][0], ocl_reduce_output_buffer, CL_TRUE, 0, 32 * number_of_groups * sizeof(float), reductionoutput, 0, NULL, NULL);
-			checkErr(clError, "clEnqueueReadBuffer");
-
-			TooN::Matrix<TooN::Dynamic, TooN::Dynamic, float, TooN::Reference::RowMajor> values(reductionoutput, number_of_groups, 32);
-
-			for (int j = 1; j < number_of_groups; ++j) {
-				values[0] += values[j];
-			}*/
 
 			size_t RglobalWorksize[1] = { NUM_THREADS_REDUCE_KERNEL };
 			clError = clEnqueueNDRangeKernel(cmd_queues[0][0], reduce_ocl_kernel, 1, NULL, RglobalWorksize, NULL, 0, NULL, NULL);
