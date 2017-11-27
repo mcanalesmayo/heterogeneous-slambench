@@ -43,9 +43,9 @@
 
 #endif
 
-#define NUM_THREADS_REDUCE_KERNEL 1
+#define NUM_THREADS_REDUCE_KERNEL 200
 
-cl_kernel reduce_ocl_kernel;
+cl_kernel reduce_ocl_kernel[3];
 
 cl_mem ocl_reduce_output_buffer = NULL;
 cl_mem ocl_trackingResult = NULL;
@@ -101,8 +101,12 @@ void Kfusion::languageSpecificConstructor() {
 		print_kernel_timing = true;
 
 	
-	reduce_ocl_kernel = clCreateKernel(programs[0], "reduceKernel", &clError);
-	checkErr(clError, "clCreateKernel");
+	char kernelName[20];
+	for(int i=0; i<3; i++) {
+		sprintf(kernelName, "reduceKernel%d", i+1);
+		reduce_ocl_kernel[i] = clCreateKernel(programs[0], kernelName, &clError);
+		checkErr(clError, "clCreateKernel");
+	}
 
 	ocl_trackingResult = clCreateBuffer(contexts[0], CL_MEM_READ_WRITE, sizeof(TrackData) * computationSize.x * computationSize.y, NULL, &clError);
 	checkErr(clError, "clCreateBuffer");
@@ -155,8 +159,10 @@ void Kfusion::languageSpecificConstructor() {
 }
 
 Kfusion::~Kfusion() {
-	RELEASE_KERNEL(reduce_ocl_kernel);
-	reduce_ocl_kernel = NULL;
+	for(int i=0; i<3; i++) {
+		RELEASE_KERNEL(reduce_ocl_kernel[i]);
+		reduce_ocl_kernel[i] = NULL;
+	}
 
 	if (ocl_trackingResult) {
 		clError = clReleaseMemObject(ocl_trackingResult);
@@ -1006,21 +1012,15 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 
 			int arg = 0;
 			char errStr[20];
-			clError = clSetKernelArg(reduce_ocl_kernel, arg++, sizeof(cl_mem), &ocl_reduce_output_buffer);
+			clError = clSetKernelArg(reduce_ocl_kernel[level], arg++, sizeof(cl_mem), &ocl_reduce_output_buffer);
 			sprintf(errStr, "clSetKernelArg%d", arg);
 			checkErr(clError, errStr);
-			clError = clSetKernelArg(reduce_ocl_kernel, arg++, sizeof(cl_mem), &ocl_trackingResult);
-			sprintf(errStr, "clSetKernelArg%d", arg);
-			checkErr(clError, errStr);
-			clError = clSetKernelArg(reduce_ocl_kernel, arg++, sizeof(cl_uint2), &computationSize);
-			sprintf(errStr, "clSetKernelArg%d", arg);
-			checkErr(clError, errStr);
-			clError = clSetKernelArg(reduce_ocl_kernel, arg++, sizeof(cl_uint2), &localimagesize);
+			clError = clSetKernelArg(reduce_ocl_kernel[level], arg++, sizeof(cl_mem), &ocl_trackingResult);
 			sprintf(errStr, "clSetKernelArg%d", arg);
 			checkErr(clError, errStr);
 
 			size_t RglobalWorksize[1] = { NUM_THREADS_REDUCE_KERNEL };
-			clError = clEnqueueNDRangeKernel(cmd_queues[0][0], reduce_ocl_kernel, 1, NULL, RglobalWorksize, NULL, 0, NULL, NULL);
+			clError = clEnqueueNDRangeKernel(cmd_queues[0][0], reduce_ocl_kernel[level], 1, NULL, RglobalWorksize, NULL, 0, NULL, NULL);
             checkErr(clError, "clEnqueueNDRangeKernel");
 
             clError = clEnqueueReadBuffer(cmd_queues[0][0], ocl_reduce_output_buffer, CL_TRUE, 0, NUM_THREADS_REDUCE_KERNEL * 32 * sizeof(float), reductionoutput, 0, NULL, NULL);
