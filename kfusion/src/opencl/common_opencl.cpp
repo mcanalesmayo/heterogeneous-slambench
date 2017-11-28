@@ -17,7 +17,7 @@
 #define STR(x) XSTR(x)
 
 #ifndef AOCX_PATH
-#define AOCX_PATH "/home/mcanales/Desktop/slambench/kfusion/src/opencl/kernels_fpga_14"
+#define AOCX_PATH "/home/mcanales/heterogeneous-slambench/kfusion/src/opencl/kernels_fpga_14"
 #endif
 
 cl_int             clError;
@@ -189,7 +189,7 @@ int opencl_init(void) {
         return -1;
     }
 
-    char const * tempchar = "/home/mcanales/Desktop/slambench/kfusion/src/opencl/kernels.cl";
+    char const * tempchar = "/home/mcanales/heterogeneous-slambench/kfusion/src/opencl/kernels.cl";
     FILE *fp = fopen(tempchar, "rb"); 
     if(!fp) {
         printf("ERROR: unable to open '%s'\n", tempchar);
