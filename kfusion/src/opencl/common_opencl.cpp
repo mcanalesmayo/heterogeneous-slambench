@@ -17,7 +17,7 @@
 #define STR(x) XSTR(x)
 
 #ifndef AOCX_PATH
-#define AOCX_PATH "/home/mcanales/heterogeneous-slambench/kfusion/src/opencl/kernels_fpga_reduce_16.1_opt_seqXwi_memAccessPattern_3kernels"
+#define AOCX_PATH "/home/mcanales/heterogeneous-slambench/kfusion/src/opencl/kernels_fpga_reduce_16.1_opt_seqXwi_memAccessPattern_3kernels_divisor2"
 #endif
 
 cl_int             clError;

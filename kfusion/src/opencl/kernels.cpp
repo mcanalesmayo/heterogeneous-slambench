@@ -9,6 +9,7 @@
 #include <kernels.h>
 
 #include "common_opencl.h"
+#include "reduce_utils_host.h"
 
 #include <TooN/TooN.h>
 #include <TooN/se3.h>
@@ -42,8 +43,6 @@
 		std::cerr  << (( tock_clockData.tv_nsec - tick_clockData.tv_nsec) + ((tock_clockData.tv_nsec<tick_clockData.tv_nsec)?1000000000:0)) << std::endl;}}
 
 #endif
-
-#define NUM_THREADS_REDUCE_KERNEL 200
 
 cl_kernel reduce_ocl_kernel[3];
 
@@ -112,12 +111,12 @@ void Kfusion::languageSpecificConstructor() {
 	checkErr(clError, "clCreateBuffer");
 	/*ocl_reduce_output_buffer = clCreateBuffer(contexts[0], CL_MEM_WRITE_ONLY, 32 * number_of_groups * sizeof(float), NULL, &clError);
 	checkErr(clError, "clCreateBuffer");*/
-	ocl_reduce_output_buffer = clCreateBuffer(contexts[0], CL_MEM_WRITE_ONLY, NUM_THREADS_REDUCE_KERNEL * 32 * sizeof(float), NULL, &clError);
+	ocl_reduce_output_buffer = clCreateBuffer(contexts[0], CL_MEM_WRITE_ONLY, NUM_WI_1 * 32 * sizeof(float), NULL, &clError);
 	checkErr(clError, "clCreateBuffer");
 
 
 	// internal buffers to initialize
-	posix_memalign((void **) &reductionoutput, 64, sizeof(float) * NUM_THREADS_REDUCE_KERNEL * 32);
+	posix_memalign((void **) &reductionoutput, 64, sizeof(float) * NUM_WI_1 * 32);
 
 	ScaledDepth = (float**) calloc(sizeof(float*) * iterations.size(), 1);
 	inputVertex = (float3**) calloc(sizeof(float3*) * iterations.size(), 1);
@@ -804,14 +803,21 @@ void raycastKernel(float3* vertex, float3* normal, uint2 inputSize,
 }
 
 bool updatePoseKernel(Matrix4 & pose, const float * output,
-		float icp_threshold) {
+		float icp_threshold, uint level) {
 	bool res = false;
+	TooN::Vector<6> x;
 	TICK();
 	// Update the pose regarding the tracking result
-	/*TooN::Matrix<8, 32, const float, TooN::Reference::RowMajor> values(output);
-	TooN::Vector<6> x = solve(values[0].slice<1, 27>());*/
-	TooN::Matrix<NUM_THREADS_REDUCE_KERNEL, 32, const float, TooN::Reference::RowMajor> values(output);
-	TooN::Vector<6> x = solve(values[0].slice<1, 27>());
+	if (level == 2) {
+		TooN::Matrix<NUM_WI_3, 32, const float, TooN::Reference::RowMajor> values(output);
+		x = solve(values[0].slice<1, 27>());
+	} else if (level == 1) {
+		TooN::Matrix<NUM_WI_2, 32, const float, TooN::Reference::RowMajor> values(output);
+		x = solve(values[0].slice<1, 27>());
+	} else {
+		TooN::Matrix<NUM_WI_1, 32, const float, TooN::Reference::RowMajor> values(output);
+		x = solve(values[0].slice<1, 27>());
+	}
 	TooN::SE3<> delta(x);
 	pose = toMatrix4(delta) * pose;
 
@@ -1019,23 +1025,23 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 			sprintf(errStr, "clSetKernelArg%d", arg);
 			checkErr(clError, errStr);
 
-			size_t RglobalWorksize[1] = { NUM_THREADS_REDUCE_KERNEL };
+			size_t RglobalWorksize[1] = { numWorkItemsReduce[level] };
 			clError = clEnqueueNDRangeKernel(cmd_queues[0][0], reduce_ocl_kernel[level], 1, NULL, RglobalWorksize, NULL, 0, NULL, NULL);
             checkErr(clError, "clEnqueueNDRangeKernel");
 
-            clError = clEnqueueReadBuffer(cmd_queues[0][0], ocl_reduce_output_buffer, CL_TRUE, 0, NUM_THREADS_REDUCE_KERNEL * 32 * sizeof(float), reductionoutput, 0, NULL, NULL);
+            clError = clEnqueueReadBuffer(cmd_queues[0][0], ocl_reduce_output_buffer, CL_TRUE, 0, numWorkItemsReduce[level] * 32 * sizeof(float), reductionoutput, 0, NULL, NULL);
 			checkErr(clError, "clEnqueueReadBuffer");
 
-			TooN::Matrix<TooN::Dynamic, TooN::Dynamic, float, TooN::Reference::RowMajor> values(reductionoutput, NUM_THREADS_REDUCE_KERNEL, 32);
+			TooN::Matrix<TooN::Dynamic, TooN::Dynamic, float, TooN::Reference::RowMajor> values(reductionoutput, numWorkItemsReduce[level], 32);
 
-			for (int j = 1; j < NUM_THREADS_REDUCE_KERNEL; ++j) {
+			for (int j = 1; j < numWorkItemsReduce[level]; ++j) {
 				values[0] += values[j];
 			}
 
 			/*reduceKernel(reductionoutput, trackingResult, computationSize,
 					localimagesize);*/
 
-			if (updatePoseKernel(pose, reductionoutput, icp_threshold))
+			if (updatePoseKernel(pose, reductionoutput, icp_threshold, level))
 				break;
 
 		}

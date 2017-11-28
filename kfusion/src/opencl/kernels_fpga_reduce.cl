@@ -11,19 +11,13 @@
 
 /************** TYPES ***************/
 
+#include "reduce_utils.h"
+
 typedef struct sTrackData {
 	int result;
 	float error;
 	float J[6];
 } TrackData;
-
-#define NUM_WI_1 200
-#define NUM_WI_2 200
-#define NUM_WI_3 200
-
-#define BATCHSIZE_1 (320*240)/NUM_WI_1
-#define BATCHSIZE_2 (160*120)/NUM_WI_2
-#define BATCHSIZE_3 (80*60)/NUM_WI_3
 
 __attribute__((reqd_work_group_size(NUM_WI_1,1,1)))
 __kernel void reduceKernel1 (
