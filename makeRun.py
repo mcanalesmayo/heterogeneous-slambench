@@ -23,10 +23,15 @@ ANALYZE_LOGS = ['pos', 'kernels']
 # clean benchmark files
 KERNELS_FILE = DATASET + '.' + PLATFORM + '.log.kernels.csv'
 POS_FILE = DATASET + '.' + PLATFORM + '.log.pos.csv'
-print 'Removing ' + KERNELS_FILE
-os.remove(KERNELS_FILE)
-print 'Removing ' + POS_FILE
-os.remove(POS_FILE)
+
+file_exists = os.path.isfile(KERNELS_FILE)
+if file_exists:
+    print 'Removing ' + KERNELS_FILE
+    os.remove(KERNELS_FILE)
+file_exists = os.path.isfile(POS_FILE)
+if file_exists:
+    print 'Removing ' + POS_FILE
+    os.remove(POS_FILE)
 
 proc_params = ['make', '.'.join([DATASET, PLATFORM, 'log'])]
 
