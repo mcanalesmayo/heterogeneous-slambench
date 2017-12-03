@@ -9,6 +9,7 @@
 #include <kernels.h>
 
 #include "common_opencl.h"
+#include "reduce_utils_host.h"
 
 #include <TooN/TooN.h>
 #include <TooN/se3.h>
@@ -43,16 +44,10 @@
 
 #endif
 
-#define NUM_THREADS_REDUCE_KERNEL 1
-
 cl_kernel reduce_ocl_kernel;
 
 cl_mem ocl_reduce_output_buffer = NULL;
 cl_mem ocl_trackingResult = NULL;
-
-// reduction parameters
-static const size_t size_of_group = 64;
-static const size_t number_of_groups = 8;
 
 
 
@@ -104,16 +99,14 @@ void Kfusion::languageSpecificConstructor() {
 	reduce_ocl_kernel = clCreateKernel(programs[0], "reduceKernel", &clError);
 	checkErr(clError, "clCreateKernel");
 
-	ocl_trackingResult = clCreateBuffer(contexts[0], CL_MEM_READ_WRITE, sizeof(TrackData) * computationSize.x * computationSize.y, NULL, &clError);
+	ocl_trackingResult = clCreateBuffer(contexts[0], CL_MEM_READ_ONLY, sizeof(TrackData) * computationSize.x * computationSize.y, NULL, &clError);
 	checkErr(clError, "clCreateBuffer");
-	/*ocl_reduce_output_buffer = clCreateBuffer(contexts[0], CL_MEM_WRITE_ONLY, 32 * number_of_groups * sizeof(float), NULL, &clError);
-	checkErr(clError, "clCreateBuffer");*/
-	ocl_reduce_output_buffer = clCreateBuffer(contexts[0], CL_MEM_WRITE_ONLY, NUM_THREADS_REDUCE_KERNEL * 32 * sizeof(float), NULL, &clError);
+	ocl_reduce_output_buffer = clCreateBuffer(contexts[0], CL_MEM_WRITE_ONLY, NUM_WORK_GROUPS * 32 * sizeof(float), NULL, &clError);
 	checkErr(clError, "clCreateBuffer");
 
 
 	// internal buffers to initialize
-	posix_memalign((void **) &reductionoutput, 64, sizeof(float) * NUM_THREADS_REDUCE_KERNEL * 32);
+	posix_memalign((void **) &reductionoutput, 64, NUM_WORK_GROUPS * 32 * sizeof(float));
 
 	ScaledDepth = (float**) calloc(sizeof(float*) * iterations.size(), 1);
 	inputVertex = (float3**) calloc(sizeof(float3*) * iterations.size(), 1);
@@ -804,7 +797,7 @@ bool updatePoseKernel(Matrix4 & pose, const float * output,
 	// Update the pose regarding the tracking result
 	/*TooN::Matrix<8, 32, const float, TooN::Reference::RowMajor> values(output);
 	TooN::Vector<6> x = solve(values[0].slice<1, 27>());*/
-	TooN::Matrix<NUM_THREADS_REDUCE_KERNEL, 32, const float, TooN::Reference::RowMajor> values(output);
+	TooN::Matrix<NUM_WORK_GROUPS, 32, const float, TooN::Reference::RowMajor> values(output);
 	TooN::Vector<6> x = solve(values[0].slice<1, 27>());
 	TooN::SE3<> delta(x);
 	pose = toMatrix4(delta) * pose;
@@ -1004,7 +997,9 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 			clEnqueueWriteBuffer(cmd_queues[0][0], ocl_trackingResult, CL_TRUE, 0, sizeof(TrackData) * (localimagesize.x * localimagesize.y), trackingResult, 0, NULL, NULL);
 			checkErr(clError, "clEnqueueReadBuffer");
 
-			int arg = 0;
+			uint workgroupSize = numWorkItemsReduce[level] / NUM_WORK_GROUPS;
+
+			uint arg = 0;
 			char errStr[20];
 			clError = clSetKernelArg(reduce_ocl_kernel, arg++, sizeof(cl_mem), &ocl_reduce_output_buffer);
 			sprintf(errStr, "clSetKernelArg%d", arg);
@@ -1018,22 +1013,23 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 			clError = clSetKernelArg(reduce_ocl_kernel, arg++, sizeof(cl_uint2), &localimagesize);
 			sprintf(errStr, "clSetKernelArg%d", arg);
 			checkErr(clError, errStr);
+			clError = clSetKernelArg(reduce_ocl_kernel, arg++, workgroupSize * 32 * sizeof(float), NULL);
+			sprintf(errStr, "clSetKernelArg%d", arg);
+			checkErr(clError, errStr);
 
-			size_t RglobalWorksize[1] = { NUM_THREADS_REDUCE_KERNEL };
-			clError = clEnqueueNDRangeKernel(cmd_queues[0][0], reduce_ocl_kernel, 1, NULL, RglobalWorksize, NULL, 0, NULL, NULL);
+			size_t RglobalWorksize[1] = { numWorkItemsReduce[level] };
+			size_t RlocalWorksize[1] = { workgroupSize };
+			clError = clEnqueueNDRangeKernel(cmd_queues[0][0], reduce_ocl_kernel, 1, NULL, RglobalWorksize, RlocalWorksize, 0, NULL, NULL);
             checkErr(clError, "clEnqueueNDRangeKernel");
 
-            clError = clEnqueueReadBuffer(cmd_queues[0][0], ocl_reduce_output_buffer, CL_TRUE, 0, NUM_THREADS_REDUCE_KERNEL * 32 * sizeof(float), reductionoutput, 0, NULL, NULL);
+            clError = clEnqueueReadBuffer(cmd_queues[0][0], ocl_reduce_output_buffer, CL_TRUE, 0, NUM_WORK_GROUPS * 32 * sizeof(float), reductionoutput, 0, NULL, NULL);
 			checkErr(clError, "clEnqueueReadBuffer");
 
-			TooN::Matrix<TooN::Dynamic, TooN::Dynamic, float, TooN::Reference::RowMajor> values(reductionoutput, NUM_THREADS_REDUCE_KERNEL, 32);
+			TooN::Matrix<TooN::Dynamic, TooN::Dynamic, float, TooN::Reference::RowMajor> values(reductionoutput, NUM_WORK_GROUPS, 32);
 
-			for (int j = 1; j < NUM_THREADS_REDUCE_KERNEL; ++j) {
+			for (int j = 1; j < NUM_WORK_GROUPS; ++j) {
 				values[0] += values[j];
 			}
-
-			/*reduceKernel(reductionoutput, trackingResult, computationSize,
-					localimagesize);*/
 
 			if (updatePoseKernel(pose, reductionoutput, icp_threshold))
 				break;

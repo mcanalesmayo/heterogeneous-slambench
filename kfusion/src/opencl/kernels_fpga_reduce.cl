@@ -21,10 +21,14 @@ __kernel void reduceKernel (
 		__global float * restrict out,
 		__global const TrackData * restrict J,
 		const uint2 JSize,
-		const uint2 size
+		const uint2 size,
+		__local float * restrict sumsLocal
 ) {
-	uint threadIdx = get_global_id(0);
+	uint globalIdx = get_global_id(0);
 	uint globalSize = get_global_size(0);
+	uint localIdx = get_local_id(0);
+	uint localSize = get_local_size(0);
+	uint groupId = get_group_id(0);
 	uint batchSize = (JSize.y * JSize.x) / globalSize;
 
 	float sums[32];
@@ -38,8 +42,9 @@ __kernel void reduceKernel (
 		sums[i] = 0.0f;
 	}
 
+	#pragma unroll 4
 	for(i = 0; i < batchSize; i++) {
-		const TrackData row = J[threadIdx + i*globalSize];
+		const TrackData row = J[globalIdx + i*globalSize];
 		if(row.result < 1) {
 			if (row.result == -4) {
 				info[1] += 1;
@@ -92,7 +97,25 @@ __kernel void reduceKernel (
 	}
 
 	#pragma unroll
-	for(i = 0; i < 32; i++) {
-		out[i+threadIdx*32] = sums[i];
+	for (i = 0; i < 32; i++) {
+		sumsLocal[localIdx + i*localSize] = sums[i];
+	}
+
+	barrier(CLK_LOCAL_MEM_FENCE);
+
+	if (localIdx == 0) {
+		#pragma unroll
+		for (i = 0; i < 32; i++) {
+			// init private memory with fist element
+			sums[i] = sumsLocal[i*localSize];
+			// loop over the (localSize - 1) remaining elements
+			// and perform reduction
+			#pragma unroll
+			for (k = 1; k < localSize; k++) {
+				sums[i] += sumsLocal[i*localSize + k];
+			}
+			// save result to global memory
+			out[groupId*32 + i] = sums[i];
+		}
 	}
 }
