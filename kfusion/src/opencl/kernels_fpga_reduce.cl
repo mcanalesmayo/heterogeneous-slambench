@@ -17,6 +17,7 @@ typedef struct sTrackData {
 	float J[6];
 } TrackData;
 
+__attribute__((max_work_group_size(100)))
 __kernel void reduceKernel (
 		__global float * restrict out,
 		__global const TrackData * restrict J,
@@ -42,7 +43,7 @@ __kernel void reduceKernel (
 		sums[i] = 0.0f;
 	}
 
-	#pragma unroll 4
+	#pragma unroll 2
 	for(i = 0; i < batchSize; i++) {
 		const TrackData row = J[globalIdx + i*globalSize];
 		if(row.result < 1) {
@@ -110,7 +111,6 @@ __kernel void reduceKernel (
 			sums[i] = sumsLocal[i*localSize];
 			// loop over the (localSize - 1) remaining elements
 			// and perform reduction
-			#pragma unroll
 			for (k = 1; k < localSize; k++) {
 				sums[i] += sumsLocal[i*localSize + k];
 			}
