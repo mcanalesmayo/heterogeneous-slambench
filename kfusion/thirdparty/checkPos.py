@@ -22,7 +22,7 @@ if len(sys.argv) != 6:
     exit (1)
 
 KFUSION_LOG_REGEX =      "([0-9]+[\s]*)\\t" 
-KFUSION_LOG_REGEX += 9 * "([0-9.]+)\\t" 
+KFUSION_LOG_REGEX += 15 * "([0-9.]+)\\t" 
 KFUSION_LOG_REGEX += 3 * "([-0-9.]+)\\t" 
 KFUSION_LOG_REGEX +=     "([01])\s+([01])" 
 
@@ -53,12 +53,13 @@ for variable in headers:
 for line in lines[1:]:
     matching = re.match(KFUSION_LOG_REGEX, line)
     if matching:
+        print line
         dropped = int(matching.group(1)) - lastFrame - 1
         if dropped > 0:
             framesDropped = framesDropped + dropped
             for pad in range(0,dropped):
                  kfusion_traj.append(lastValid)
-                 
+
         kfusion_traj.append((matching.group(lenHeaders-4), matching.group(lenHeaders-3), matching.group(lenHeaders-2), matching.group(lenHeaders-1), 1))
         lastValid = (matching.group(lenHeaders-4), matching.group(lenHeaders-3), matching.group(lenHeaders-2), matching.group(lenHeaders-1), 0)
         if int(matching.group(lenHeaders-1)) == 0:

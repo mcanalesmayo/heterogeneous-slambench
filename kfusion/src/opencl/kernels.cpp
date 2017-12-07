@@ -68,7 +68,7 @@ cl_mem ocl_trackingResult = NULL;
 static const size_t size_of_group = 64;
 static const size_t number_of_groups = 8;
 
-
+double startOfKernel, endOfKernel;
 
 // input once
 float * gaussian;
@@ -981,17 +981,22 @@ void renderVolumeKernel(uchar4* out, const uint2 depthSize, const Volume volume,
 
 bool Kfusion::preprocessing(const ushort * inputDepth, const uint2 inputSize) {
 
-	timings[1] = benchmark_tock();
+	startOfKernel = benchmark_tock();
 	mm2metersKernel(floatDepth, computationSize, inputDepth, inputSize);
-	timings[2] = benchmark_tock();
+	endOfKernel = benchmark_tock();
+	timings[1] = endOfKernel - startOfKernel;
+
+	startOfKernel = endOfKernel;
 	bilateralFilterKernel(ScaledDepth[0], floatDepth, computationSize, gaussian, e_delta, radius);
-	timings[3] = benchmark_tock();
+	endOfKernel = benchmark_tock();
+	timings[2] = endOfKernel - startOfKernel;
 
 	return true;
 }
 
 bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 		uint frame) {
+	startOfKernel = benchmark_tock();
 
 	if (frame % tracking_rate != 0)
 		return false;
@@ -1003,18 +1008,40 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 						computationSize.y / (int) pow(2, i - 1)), e_delta * 3, 1);
 	}
 
+	endOfKernel = benchmark_tock();
+	timings[3] = endOfKernel - startOfKernel;
+
 	// prepare the 3D information from the input depth maps
 	uint2 localimagesize = computationSize;
+
+	timings[4] = 0.0f;
+	timings[5] = 0.0f;
 	for (unsigned int i = 0; i < iterations.size(); ++i) {
+		startOfKernel = endOfKernel;
+
 		Matrix4 invK = getInverseCameraMatrix(k / float(1 << i));
 		depth2vertexKernel(inputVertex[i], ScaledDepth[i], localimagesize, invK);
 
+		endOfKernel = benchmark_tock();
+		timings[4] += endOfKernel - startOfKernel;
+
+
+		startOfKernel = endOfKernel;
+
 		vertex2normalKernel(inputNormal[i], inputVertex[i], localimagesize);
 		localimagesize = make_uint2(localimagesize.x / 2, localimagesize.y / 2);
+
+		endOfKernel = benchmark_tock();
+		timings[5] += endOfKernel - startOfKernel;
 	}
+
+	timings[6] = 0.0f;
+	timings[7] = 0.0f;
+	startOfKernel = endOfKernel;
 
 	oldPose = pose;
 	const Matrix4 projectReference = getCameraMatrix(k) * inverse(raycastPose);
+	bool updatePoseKernelRes, checkPoseKernelRes;
 
 	for (int level = iterations.size() - 1; level >= 0; --level) {
 		uint2 localimagesize = make_uint2(
@@ -1026,7 +1053,10 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 					localimagesize, vertex, normal, computationSize, pose,
 					projectReference, dist_threshold, normal_threshold);
 
+			endOfKernel = benchmark_tock();
+			timings[6] += endOfKernel - startOfKernel;
 
+			startOfKernel = endOfKernel;
 
 			clEnqueueWriteBuffer(cmd_queues[0][0], ocl_trackingResult, CL_TRUE, 0, sizeof(TrackData) * (localimagesize.x * localimagesize.y), trackingResult, 0, NULL, NULL);
 			checkErr(clError, "clEnqueueReadBuffer");
@@ -1053,36 +1083,29 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 				values[0] += values[j];
 			}
 
-			/*reduceKernel(reductionoutput, trackingResult, computationSize,
-					localimagesize);*/
+			updatePoseKernelRes = updatePoseKernel(pose, reductionoutput, icp_threshold, level);
+			endOfKernel = benchmark_tock();
+			timings[7] += endOfKernel - startOfKernel;
 
-			if (updatePoseKernel(pose, reductionoutput, icp_threshold, level))
+			startOfKernel = endOfKernel;
+
+			if (updatePoseKernelRes)
 				break;
-
 		}
 	}
-	return checkPoseKernel(pose, oldPose, reductionoutput, computationSize,
+
+	checkPoseKernelRes = checkPoseKernel(pose, oldPose, reductionoutput, computationSize,
 			track_threshold);
+	endOfKernel = benchmark_tock();
+	timings[6] += endOfKernel - startOfKernel;
 
-}
-
-bool Kfusion::raycasting(float4 k, float mu, uint frame) {
-
-	bool doRaycast = false;
-
-	if (frame > 2) {
-		raycastPose = pose;
-		raycastKernel(vertex, normal, computationSize, volume,
-				raycastPose * getInverseCameraMatrix(k), nearPlane, farPlane,
-				step, 0.75f * mu);
-	}
-
-	return doRaycast;
+	return checkPoseKernelRes;
 
 }
 
 bool Kfusion::integration(float4 k, uint integration_rate, float mu,
 		uint frame) {
+	startOfKernel = benchmark_tock();
 
 	bool doIntegrate = checkPoseKernel(pose, oldPose, reductionoutput,
 			computationSize, track_threshold);
@@ -1095,12 +1118,56 @@ bool Kfusion::integration(float4 k, uint integration_rate, float mu,
 		doIntegrate = false;
 	}
 
-	return doIntegrate;
+	endOfKernel = benchmark_tock();
+	timings[8] = endOfKernel - startOfKernel;
 
+	return doIntegrate;
+}
+
+bool Kfusion::raycasting(float4 k, float mu, uint frame) {
+	startOfKernel = benchmark_tock();
+
+	bool doRaycast = false;
+
+	if (frame > 2) {
+		raycastPose = pose;
+		raycastKernel(vertex, normal, computationSize, volume,
+				raycastPose * getInverseCameraMatrix(k), nearPlane, farPlane,
+				step, 0.75f * mu);
+	}
+
+	endOfKernel = benchmark_tock();
+	timings[9] = endOfKernel - startOfKernel;
+
+	return doRaycast;
+}
+
+void Kfusion::renderDepth(uchar4 * out, uint2 outputSize) {
+	startOfKernel = benchmark_tock();
+	renderDepthKernel(out, floatDepth, outputSize, nearPlane, farPlane);
+	endOfKernel = benchmark_tock();
+	timings[10] = endOfKernel - startOfKernel;
+}
+
+void Kfusion::renderTrack(uchar4 * out, uint2 outputSize) {
+	startOfKernel = benchmark_tock();
+	renderTrackKernel(out, trackingResult, outputSize);
+	endOfKernel = benchmark_tock();
+	timings[11] = endOfKernel - startOfKernel;
+}
+
+void Kfusion::renderVolume(uchar4 * out, uint2 outputSize, int frame,
+		int raycast_rendering_rate, float4 k, float largestep) {
+	startOfKernel = benchmark_tock();
+	if (frame % raycast_rendering_rate == 0)
+		renderVolumeKernel(out, outputSize, volume,
+				*(this->viewPose) * getInverseCameraMatrix(k), nearPlane,
+				farPlane * 2.0f, step, largestep, light, ambient);
+	endOfKernel = benchmark_tock();
+	timings[12] = endOfKernel - startOfKernel;
 }
 
 void Kfusion::dumpVolume(const char *filename) {
-
 	std::ofstream fDumpFile;
 
 	if (filename == NULL) {
@@ -1122,23 +1189,6 @@ void Kfusion::dumpVolume(const char *filename) {
 	}
 
 	fDumpFile.close();
-
-}
-
-void Kfusion::renderVolume(uchar4 * out, uint2 outputSize, int frame,
-		int raycast_rendering_rate, float4 k, float largestep) {
-	if (frame % raycast_rendering_rate == 0)
-		renderVolumeKernel(out, outputSize, volume,
-				*(this->viewPose) * getInverseCameraMatrix(k), nearPlane,
-				farPlane * 2.0f, step, largestep, light, ambient);
-}
-
-void Kfusion::renderTrack(uchar4 * out, uint2 outputSize) {
-	renderTrackKernel(out, trackingResult, outputSize);
-}
-
-void Kfusion::renderDepth(uchar4 * out, uint2 outputSize) {
-	renderDepthKernel(out, floatDepth, outputSize, nearPlane, farPlane);
 }
 
 void Kfusion::computeFrame(const ushort * inputDepth, const uint2 inputSize,
@@ -1153,6 +1203,4 @@ void Kfusion::computeFrame(const ushort * inputDepth, const uint2 inputSize,
 
 void synchroniseDevices() {
 	clFinish(cmd_queues[0][0]);
-	//clFinish(cmd_queues[1][0]);
-	//clFinish(cmd_queues[1][1]);
 }

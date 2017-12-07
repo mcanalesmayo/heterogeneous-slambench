@@ -27,7 +27,7 @@
 // #include <thread>
 // #include <omp.h>
 
-inline double tock() {
+inline double benchmark_tock() {
 	synchroniseDevices();
 #ifdef __APPLE__
 		clock_serv_t cclock;
@@ -122,16 +122,19 @@ int main(int argc, char ** argv) {
 
 	uint frame = 0;
 
-	double* timings = (double *) malloc(17 * sizeof(double));
+	double* timings = (double *) malloc(13 * sizeof(double));
+	double startOfKernel, endOfKernel, computationTotal, overallTotal;
 	Kfusion kfusion(computationSize, config.volume_resolution,
 			config.volume_size, init_pose, config.pyramid, timings);
-	timings[0] = tock();
 
 	*logstream
-			<< "frame\tacquisition\tpreprocessing_mm2meters\tpreprocessing_bilateralFilter\ttracking\tintegration\traycasting\trendering\tcomputation\ttotal    \tX          \tY          \tZ         \ttracked   \tintegrated"
+			<< "frame\tacquisition\tpreprocess_mm2meters\tpreprocess_bilateralFilter\ttrack_halfSample\ttrack_depth2vertex\ttrack_vertex2normal"
+			<< "\ttrack_track\ttrack_reduce\tintegrate\traycast\trenderDepth\trenderTrack\trenderVolume"
+			<< "\tcomputation\ttotal    \tX          \tY          \tZ         \ttracked   \tintegrated"
 			<< std::endl;
 	logstream->setf(std::ios::fixed, std::ios::floatfield);
 
+	startOfKernel = benchmark_tock();
 	while (reader->readNextDepthFrame(inputDepth)) {
 
 		Matrix4 pose = kfusion.getPose();
@@ -140,45 +143,54 @@ int main(int argc, char ** argv) {
 		float yt = pose.data[1].w - init_pose.y;
 		float zt = pose.data[2].w - init_pose.z;
 
+		endOfKernel = benchmark_tock();
+		timings[0] = endOfKernel - startOfKernel;
+
 		kfusion.preprocessing(inputDepth, inputSize);
 
 		bool tracked = kfusion.tracking(camera, config.icp_threshold,
 				config.tracking_rate, frame);
 
-		timings[4] = tock();
-
 		bool integrated = kfusion.integration(camera, config.integration_rate,
 				config.mu, frame);
 
-		timings[5] = tock();
-
 		bool raycast = kfusion.raycasting(camera, config.mu, frame);
-
-		timings[6] = tock();
 
 		kfusion.renderDepth(depthRender, computationSize);
 		kfusion.renderTrack(trackRender, computationSize);
 		kfusion.renderVolume(volumeRender, computationSize, frame,
 				config.rendering_rate, camera, 0.75 * config.mu);
 
-		timings[7] = tock();
+		// skip acquisition stage for computation measure
+		computationTotal = 0.0f;
+		for(uint i=1; i<13; i++) {
+			computationTotal += timings[i];
+		}
 
-		*logstream << frame << "\t" << timings[1] - timings[0] << "\t" //  acquisition
-				<< timings[2] - timings[1] << "\t"     //  preprocessing --> mm2meters
-				<< timings[3] - timings[2] << "\t"     //  preprocessing --> bilateralFilter
-				<< timings[4] - timings[3] << "\t"     //  tracking
-				<< timings[5] - timings[4] << "\t"     //  integration
-				<< timings[6] - timings[5] << "\t"     //  raycasting
-				<< timings[7] - timings[6] << "\t"     //  rendering
-				<< timings[7] - timings[1] << "\t"     //  computation
-				<< timings[7] - timings[0] << "\t"     //  total
+		overallTotal = computationTotal + timings[0];
+
+		*logstream << frame << "\t" << timings[0] << "\t" //  acquisition
+				<< timings[1] << "\t"     //  preprocessing --> mm2meters
+				<< timings[2] << "\t"     //  preprocessing --> bilateralFilter
+				<< timings[3] << "\t"     //  tracking --> halfSample
+				<< timings[4] << "\t"     //  tracking --> depth2vertex
+				<< timings[5] << "\t"     //  tracking --> vertex2normal
+				<< timings[6] << "\t"     //  tracking --> track
+				<< timings[7] << "\t"     //  tracking --> reduce
+				<< timings[8] << "\t"     //  integration --> integrate
+				<< timings[9] << "\t"     //  raycasting --> raycast
+				<< timings[10] << "\t"     //  rendering --> renderDepth
+				<< timings[11] << "\t"     //  rendering --> renderTrack
+				<< timings[12] << "\t"     //  rendering --> renderVolume
+				<< computationTotal << "\t"     //  computation
+				<< overallTotal << "\t"     //  total
 				<< xt << "\t" << yt << "\t" << zt << "\t"     //  X,Y,Z
 				<< tracked << "        \t" << integrated // tracked and integrated flags
 				<< std::endl;
 
 		frame++;
 
-		timings[0] = tock();
+		startOfKernel = benchmark_tock();
 	}
 	// ==========     DUMP VOLUME      =========
 
