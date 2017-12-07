@@ -22,7 +22,7 @@ if len(sys.argv) != 6:
     exit (1)
 
 KFUSION_LOG_REGEX =      "([0-9]+[\s]*)\\t" 
-KFUSION_LOG_REGEX += 8 * "([0-9.]+)\\t" 
+KFUSION_LOG_REGEX += 9 * "([0-9.]+)\\t" 
 KFUSION_LOG_REGEX += 3 * "([-0-9.]+)\\t" 
 KFUSION_LOG_REGEX +=     "([01])\s+([01])" 
 
@@ -44,14 +44,8 @@ data = fileref.read()
 fileref.close()
 lines = data.split("\n") # remove head + first line
 headers = lines[0].split("\t")
+lenHeaders = len(headers)
 fulldata = {}
-if len(headers) == 15:
-    if headers[14] == "":
-        del headers[14]
-
-if len(headers) != 14:
-    print "Wrong KFusion log file. Expected 14 columns but found " + str(len(headers))
-    exit(1)
 
 for variable in headers:
     fulldata[variable] = []
@@ -61,13 +55,13 @@ for line in lines[1:]:
     if matching:
         dropped = int(matching.group(1)) - lastFrame - 1
         if dropped > 0:
-    		framesDropped = framesDropped + dropped
-    		for pad in range(0,dropped):
-    	         kfusion_traj.append(lastValid)
-    	         
-        kfusion_traj.append((matching.group(10), matching.group(11), matching.group(12), matching.group(13), 1))
-        lastValid = (matching.group(10), matching.group(11), matching.group(12), matching.group(13), 0)
-        if int(matching.group(13)) == 0:
+            framesDropped = framesDropped + dropped
+            for pad in range(0,dropped):
+                 kfusion_traj.append(lastValid)
+                 
+        kfusion_traj.append((matching.group(lenHeaders-4), matching.group(lenHeaders-3), matching.group(lenHeaders-2), matching.group(lenHeaders-1), 1))
+        lastValid = (matching.group(lenHeaders-4), matching.group(lenHeaders-3), matching.group(lenHeaders-2), matching.group(lenHeaders-1), 0)
+        if int(matching.group(lenHeaders-1)) == 0:
             untracked = untracked + 1
 
         validFrames = validFrames + 1
@@ -168,7 +162,7 @@ with open(filename, 'a') as f:
 
         if (framesDropped == 0) and (str(variable) == "ATE_wrt_kfusion"):
             continue
-    	
+        
         dataName = str(variable).strip()
         dataMin = min(fulldata[variable])
         dataMax = max(fulldata[variable])
@@ -177,7 +171,7 @@ with open(filename, 'a') as f:
         csvRow = [timestamp, commitHash, dataName, dataMin, dataMax, dataMean, dataTotal]
         writer.writerow(csvRow)
 
-        print "%20.20s" % dataName,
+        print "\t%s" % dataName,
         print "\tMin : %6.6f" % dataMin,
         print "\tMax : %0.6f"  % dataMax,
         print "\tMean : %0.6f" % dataMean,

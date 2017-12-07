@@ -44,6 +44,21 @@
 
 #endif
 
+inline double benchmark_tock() {
+	synchroniseDevices();
+#ifdef __APPLE__
+	clock_serv_t cclock;
+	mach_timespec_t clockData;
+	host_get_clock_service(mach_host_self(), SYSTEM_CLOCK, &cclock);
+	clock_get_time(cclock, &clockData);
+	mach_port_deallocate(mach_task_self(), cclock);
+#else
+	struct timespec clockData;
+	clock_gettime(CLOCK_MONOTONIC, &clockData);
+#endif
+	return (double) clockData.tv_sec + clockData.tv_nsec / 1000000000.0;
+}	
+
 cl_kernel reduce_ocl_kernel[3];
 
 cl_mem ocl_reduce_output_buffer = NULL;
@@ -98,7 +113,6 @@ void Kfusion::languageSpecificConstructor() {
 
 	if (getenv("KERNEL_TIMINGS"))
 		print_kernel_timing = true;
-
 	
 	char kernelName[20];
 	for(int i=0; i<3; i++) {
@@ -106,14 +120,12 @@ void Kfusion::languageSpecificConstructor() {
 		reduce_ocl_kernel[i] = clCreateKernel(programs[0], kernelName, &clError);
 		checkErr(clError, "clCreateKernel");
 	}
-
 	ocl_trackingResult = clCreateBuffer(contexts[0], CL_MEM_READ_WRITE, sizeof(TrackData) * computationSize.x * computationSize.y, NULL, &clError);
 	checkErr(clError, "clCreateBuffer");
 	/*ocl_reduce_output_buffer = clCreateBuffer(contexts[0], CL_MEM_WRITE_ONLY, 32 * number_of_groups * sizeof(float), NULL, &clError);
 	checkErr(clError, "clCreateBuffer");*/
 	ocl_reduce_output_buffer = clCreateBuffer(contexts[0], CL_MEM_WRITE_ONLY, NUM_WI_1 * 32 * sizeof(float), NULL, &clError);
 	checkErr(clError, "clCreateBuffer");
-
 
 	// internal buffers to initialize
 	posix_memalign((void **) &reductionoutput, 64, sizeof(float) * NUM_WI_1 * 32);
@@ -969,8 +981,11 @@ void renderVolumeKernel(uchar4* out, const uint2 depthSize, const Volume volume,
 
 bool Kfusion::preprocessing(const ushort * inputDepth, const uint2 inputSize) {
 
+	timings[1] = benchmark_tock();
 	mm2metersKernel(floatDepth, computationSize, inputDepth, inputSize);
+	timings[2] = benchmark_tock();
 	bilateralFilterKernel(ScaledDepth[0], floatDepth, computationSize, gaussian, e_delta, radius);
+	timings[3] = benchmark_tock();
 
 	return true;
 }
