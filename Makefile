@@ -5,12 +5,16 @@
 2 = -s 4.8 -p 0.34,0.5,0.24 -z 4 -c 2 -r 2 -k 481.2,480,320,240
 3 = -s 5.0 -p 0.2685,0.5,0.4 -z 4 -c 2 -r 2 -k 481.2,480,320,240
 
-TIMESTAMP=$(shell date "+%Y_%m_%d_%H_%M_%S")
+TIMESTAMP=$(shell date "+%Y_%m_%d_%H_%M_%S_%N")
 COMMIT_HASH=$(shell git rev-parse --verify HEAD)
 ROOT_DIR=$(shell pwd)
 TOON_DIR=${ROOT_DIR}/TooN/install_dir
 TOON_INCLUDE_DIR=${TOON_DIR}/include/
+ifdef emulate
 EMULATE=$(emulate)
+else
+EMULATE=false
+endif
 
 all : build
 
