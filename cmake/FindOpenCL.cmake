@@ -94,10 +94,10 @@ SET (OPENCL_LIBRARIES ${OPENCL_LIBRARY})
 IF(DEFINED ENV{ALTERAOCLSDKROOT})
   # find OpenCL compiler
   # aoc kernel.cl -o kernel.aocx --board de5net_a7
-  FIND_PROGRAM(AOC_BIN aoc)
-  IF(NOT AOC_BIN)
-    MESSAGE (FATAL_ERROR "Altera OpenCL compiler not found")
-  ENDIF(NOT AOC_BIN)
+  #FIND_PROGRAM(AOC_BIN aoc)
+  #IF(NOT AOC_BIN)
+  #  MESSAGE (FATAL_ERROR "Altera OpenCL compiler not found")
+  #ENDIF(NOT AOC_BIN)
 
   # include OpenCL headers
   EXECUTE_PROCESS(COMMAND aocl compile-config OUTPUT_VARIABLE AOCL_INCLUDE_DIRS)

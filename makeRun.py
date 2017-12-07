@@ -1,5 +1,6 @@
 #/usr/bin/python
 
+import os
 import sys
 import csv
 from subprocess import call
@@ -19,6 +20,19 @@ PLATFORM = sys.argv[3]
 
 ANALYZE_LOGS = ['pos', 'kernels']
 
+# clean benchmark files
+KERNELS_FILE = DATASET + '.' + PLATFORM + '.log.kernels.csv'
+POS_FILE = DATASET + '.' + PLATFORM + '.log.pos.csv'
+
+file_exists = os.path.isfile(KERNELS_FILE)
+if file_exists:
+    print 'Removing ' + KERNELS_FILE
+    os.remove(KERNELS_FILE)
+file_exists = os.path.isfile(POS_FILE)
+if file_exists:
+    print 'Removing ' + POS_FILE
+    os.remove(POS_FILE)
+
 proc_params = ['make', '.'.join([DATASET, PLATFORM, 'log'])]
 
 for i in range(0, N_EXECS):
@@ -31,38 +45,49 @@ for fileSuffix in ANALYZE_LOGS:
     inputFile = csv.DictReader(open(filename))
 
     result = dict()
-    avoidStages = ['ATE', 'total']
     checkedExecutions = []
+    # collect measures
     for row in inputFile:
-        stageName = row['Name']
-        if stageName in avoidStages:
-            continue
-
         execVersion = row['CommitHash']
-        if execVersion not in result:
-            result[execVersion] = dict()
-            result[execVersion]['values'] = dict()
-            result[execVersion]['num_values'] = 0
-            result[execVersion]['total_time'] = float(0)
+        stageName = row['Name']
+        stageValue = float(row['Total'])
 
-        execId = row['Timestamp']
-        if execId not in checkedExecutions:
-            checkedExecutions.append(execId)
-            result[execVersion]['num_values'] += 1
+        if stageName != 'total':
+            if execVersion not in result:
+                result[execVersion] = dict()
+                result[execVersion]['ATE'] = float(0)
+                result[execVersion]['values'] = dict()
+                result[execVersion]['num_values'] = 0
+                result[execVersion]['total_time'] = float(0)
 
-        stageTime = float(row['Total'])
-        if stageName not in result[execVersion]['values']:
-            result[execVersion]['values'][stageName] = stageTime
-        else:
-            result[execVersion]['values'][stageName] += stageTime
+            execId = row['Timestamp']
+            if execId not in checkedExecutions:
+                checkedExecutions.append(execId)
+                result[execVersion]['num_values'] += 1
 
-        result[execVersion]['total_time'] += stageTime
+            # ATE handler
+            if stageName == 'ATE':
+                result[execVersion]['ATE'] += stageValue
+            # ordinary stage handler
+            else:
+                if stageName not in result[execVersion]['values']:
+                    result[execVersion]['values'][stageName] = stageValue
+                else:
+                    result[execVersion]['values'][stageName] += stageValue
+                result[execVersion]['total_time'] += stageValue
 
-    for version in result:
+    # print results
+    for execVersion in result:
+        totalTime = float(0)
         print "Analyzing %s" % filename
-        print "\tVersion: %s" % version
+        print "\tVersion: %s" % execVersion
         print "\tNumber of execs: %d" % result[execVersion]['num_values']
         for stageName in result[execVersion]['values']:
             stageTotal = result[execVersion]['values'][stageName]/result[execVersion]['num_values']
             stagePercentage = (100*result[execVersion]['values'][stageName])/result[execVersion]['total_time']
             print "\t\tStage: %s\tTotal: %0.6f\tPercentage: %0.2f%%" % (stageName, stageTotal, stagePercentage)
+        medTotalTime = result[execVersion]['total_time']/result[execVersion]['num_values']
+        print "Sum of all values (total): %0.6f" % medTotalTime
+        if result[execVersion]['ATE'] != float(0):
+            medATE = result[execVersion]['ATE']/result[execVersion]['num_values']
+            print "ATE (accuracy): %0.6f" % medATE

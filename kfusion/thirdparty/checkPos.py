@@ -22,7 +22,7 @@ if len(sys.argv) != 6:
     exit (1)
 
 KFUSION_LOG_REGEX =      "([0-9]+[\s]*)\\t" 
-KFUSION_LOG_REGEX += 8 * "([0-9.]+)\\t" 
+KFUSION_LOG_REGEX += 15 * "([0-9.]+)\\t" 
 KFUSION_LOG_REGEX += 3 * "([-0-9.]+)\\t" 
 KFUSION_LOG_REGEX +=     "([01])\s+([01])" 
 
@@ -44,14 +44,8 @@ data = fileref.read()
 fileref.close()
 lines = data.split("\n") # remove head + first line
 headers = lines[0].split("\t")
+lenHeaders = len(headers)
 fulldata = {}
-if len(headers) == 15:
-    if headers[14] == "":
-        del headers[14]
-
-if len(headers) != 14:
-    print "Wrong KFusion log file. Expected 14 columns but found " + str(len(headers))
-    exit(1)
 
 for variable in headers:
     fulldata[variable] = []
@@ -59,15 +53,16 @@ for variable in headers:
 for line in lines[1:]:
     matching = re.match(KFUSION_LOG_REGEX, line)
     if matching:
+        print line
         dropped = int(matching.group(1)) - lastFrame - 1
         if dropped > 0:
-    		framesDropped = framesDropped + dropped
-    		for pad in range(0,dropped):
-    	         kfusion_traj.append(lastValid)
-    	         
-        kfusion_traj.append((matching.group(10), matching.group(11), matching.group(12), matching.group(13), 1))
-        lastValid = (matching.group(10), matching.group(11), matching.group(12), matching.group(13), 0)
-        if int(matching.group(13)) == 0:
+            framesDropped = framesDropped + dropped
+            for pad in range(0,dropped):
+                 kfusion_traj.append(lastValid)
+
+        kfusion_traj.append((matching.group(lenHeaders-4), matching.group(lenHeaders-3), matching.group(lenHeaders-2), matching.group(lenHeaders-1), 1))
+        lastValid = (matching.group(lenHeaders-4), matching.group(lenHeaders-3), matching.group(lenHeaders-2), matching.group(lenHeaders-1), 0)
+        if int(matching.group(lenHeaders-1)) == 0:
             untracked = untracked + 1
 
         validFrames = validFrames + 1
@@ -168,7 +163,7 @@ with open(filename, 'a') as f:
 
         if (framesDropped == 0) and (str(variable) == "ATE_wrt_kfusion"):
             continue
-    	
+        
         dataName = str(variable).strip()
         dataMin = min(fulldata[variable])
         dataMax = max(fulldata[variable])
@@ -177,29 +172,8 @@ with open(filename, 'a') as f:
         csvRow = [timestamp, commitHash, dataName, dataMin, dataMax, dataMean, dataTotal]
         writer.writerow(csvRow)
 
-        print "%20.20s" % dataName,
+        print "\t%s" % dataName,
         print "\tMin : %6.6f" % dataMin,
         print "\tMax : %0.6f"  % dataMax,
         print "\tMean : %0.6f" % dataMean,
         print "\tTotal : %0.8f" % dataTotal
-
-#first2 = []S
-#derive = []
-
-#for row_idx in range(len(rows1)) :
-#    col1 = rows1[row_idx].split("\t")
-#    col2 = rows2[row_idx].split(" ")
-#    v1 = col1[8:11]
-#    v2 = col2[1:4]
-#    if first2 == [] :
-#        first2 = v2
-#    v1 = [float(v1[0]) + float(first2[0]) , - (float(v1[1]) + float(first2[1]) ) , float(v1[2]) + float(first2[2]) ]
-#    derive.append([abs(float(v1[0]) - float(v2[0])) , abs (float(v1[1]) - float(v2[1]) ) , abs(float(v1[2]) - float(v2[2])) ])
-
-#maxderive = reduce(lambda a,d:  [max(a[0] , d[0]),max(a[1] , d[1]),max(a[2] , d[2])], derive, [0.0,0.0,0.0])
-#minderive = reduce(lambda a,d:  [min(a[0] , d[0]),min(a[1] , d[1]),min(a[2] , d[2])], derive, [1000000,10000000.0,10000000.0])
-#total = map(lambda x: x/len(rows1), reduce(lambda a,d: [a[0] + d[0],a[1] + d[1],a[2] + d[2]], derive, [0.0,0.0,0.0])) 
-
-#print "Min derivation : " + str(min(minderive))
-#print "Max derivation : " + str(max(maxderive))
-#print "Average derivation : " + str(total[0])

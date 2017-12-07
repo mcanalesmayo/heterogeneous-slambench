@@ -14,6 +14,23 @@
 #include <TooN/se3.h>
 #include <TooN/GR_SVD.h>
 
+inline double benchmark_tock() {
+	synchroniseDevices();
+#ifdef __APPLE__
+	clock_serv_t cclock;
+	mach_timespec_t clockData;
+	host_get_clock_service(mach_host_self(), SYSTEM_CLOCK, &cclock);
+	clock_get_time(cclock, &clockData);
+	mach_port_deallocate(mach_task_self(), cclock);
+#else
+	struct timespec clockData;
+	clock_gettime(CLOCK_MONOTONIC, &clockData);
+#endif
+	return (double) clockData.tv_sec + clockData.tv_nsec / 1000000000.0;
+}
+
+double startOfKernel, endOfKernel;
+
 ////// USE BY KFUSION CLASS ///////////////
 
 // input once
@@ -280,193 +297,14 @@ Kfusion::~Kfusion() {
 	clean();
 }
 
-bool updatePoseKernel(Matrix4 & pose, const float * output, float icp_threshold) {
-	// Update the pose regarding the tracking result
-	TooN::Matrix<8, 32, const float, TooN::Reference::RowMajor> values(output);
-	TooN::Vector<6> x = solve(values[0].slice<1, 27>());
-	TooN::SE3<> delta(x);
-	pose = toMatrix4(delta) * pose;
-
-	// Return validity test result of the tracking
-	if (norm(x) < icp_threshold) return true;
-	return false;
-}
-
-bool checkPoseKernel(Matrix4 & pose, Matrix4 oldPose, const float * output, uint2 imageSize, float track_threshold) {
-	// Check the tracking result, and go back to the previous camera position if necessary
-	if ((std::sqrt(output[0] / output[28]) > 2e-2) || (output[28] / (imageSize.x * imageSize.y) < track_threshold)) {
-		pose = oldPose;
-		return false;
-	} else {
-		return true;
-	}
-}
-
 void Kfusion::reset() {
 	std::cerr << "Reset function to clear volume model needs to be implemented\n";
 	exit(1);
 }
 
-void Kfusion::renderVolume(uchar4 * out, uint2 outputSize, int frame, int rate, float4 k, float largestep) {
-    if (frame % rate != 0) return;
-    // Create render opencl buffer if needed
-    if(outputImageSizeBkp.x < outputSize.x || outputImageSizeBkp.y < outputSize.y || ocl_output_render_buffer == NULL) {
-		outputImageSizeBkp = make_uint2(outputSize.x, outputSize.y);
-		if(ocl_output_render_buffer != NULL) {
-		    std::cout << "Release" << std::endl;
-		    clError = clReleaseMemObject(ocl_output_render_buffer);
-		    checkErr(clError, "clReleaseMemObject");
-		}
-		ocl_output_render_buffer = clCreateBuffer(contexts[1],  CL_MEM_WRITE_ONLY, outputSize.x * outputSize.y * sizeof(uchar4), NULL , &clError);
-		checkErr(clError, "clCreateBuffer output" );
-    }
-
-	Matrix4 view = *viewPose * getInverseCameraMatrix(k);
-
-	int arg = 0;
-	char errStr[20];
-
-    clError = clSetKernelArg(renderVolume_ocl_kernel, arg++, sizeof(cl_mem), (void*) &ocl_output_render_buffer);
-	sprintf(errStr, "clSetKernelArg%d", arg);
-	checkErr(clError, errStr);
-	clError = clSetKernelArg(renderVolume_ocl_kernel, arg++, sizeof(cl_mem), (void*) &ocl_volume_data);
-	sprintf(errStr, "clSetKernelArg%d", arg);
-	checkErr(clError, errStr);
-	clError = clSetKernelArg(renderVolume_ocl_kernel, arg++, sizeof(cl_uint3), (void*) &volumeResolution);
-	sprintf(errStr, "clSetKernelArg%d", arg);
-	checkErr(clError, errStr);
-	clError = clSetKernelArg(renderVolume_ocl_kernel, arg++, sizeof(cl_float3), (void*) &volumeDimensions);
-	sprintf(errStr, "clSetKernelArg%d", arg);
-	checkErr(clError, errStr);
-	clError = clSetKernelArg(renderVolume_ocl_kernel, arg++, sizeof(Matrix4), (void*) &view);
-	sprintf(errStr, "clSetKernelArg%d", arg);
-	checkErr(clError, errStr);
-	clError = clSetKernelArg(renderVolume_ocl_kernel, arg++, sizeof(cl_float), (void*) &nearPlane);
-	sprintf(errStr, "clSetKernelArg%d", arg);
-	checkErr(clError, errStr);
-	clError = clSetKernelArg(renderVolume_ocl_kernel, arg++, sizeof(cl_float), (void*) &farPlane);
-	sprintf(errStr, "clSetKernelArg%d", arg);
-	checkErr(clError, errStr);
-	clError = clSetKernelArg(renderVolume_ocl_kernel, arg++, sizeof(cl_float), (void*) &step);
-	sprintf(errStr, "clSetKernelArg%d", arg);
-	checkErr(clError, errStr);
-	clError = clSetKernelArg(renderVolume_ocl_kernel, arg++, sizeof(cl_float), (void*) &largestep);
-	sprintf(errStr, "clSetKernelArg%d", arg);
-	checkErr(clError, errStr);
-	clError = clSetKernelArg(renderVolume_ocl_kernel, arg++, sizeof(cl_float3), (void*) &light);
-	sprintf(errStr, "clSetKernelArg%d", arg);
-	checkErr(clError, errStr);
-	clError = clSetKernelArg(renderVolume_ocl_kernel, arg++, sizeof(cl_float3), (void*) &ambient);
-	sprintf(errStr, "clSetKernelArg%d", arg);
-	checkErr(clError, errStr);
-
-	size_t globalWorksize[2] = { computationSize.x, computationSize.y };
-
-	clError = clEnqueueNDRangeKernel(cmd_queues[1][0], renderVolume_ocl_kernel, 2, NULL, globalWorksize, NULL, 0, NULL, NULL);
-	checkErr(clError, "clEnqueueNDRangeKernel");
-
-    clError = clEnqueueReadBuffer(cmd_queues[1][0], ocl_output_render_buffer, CL_FALSE, 0, outputSize.x * outputSize.y * sizeof(uchar4), out, 0, NULL, NULL );  
-    checkErr(clError, "clEnqueueReadBuffer");
-}
-
-void Kfusion::renderTrack(uchar4 * out, uint2 outputSize) {
-    // Create render opencl buffer if needed
-    if(outputImageSizeBkp.x < outputSize.x || outputImageSizeBkp.y < outputSize.y || ocl_output_render_buffer == NULL) 
-    {
-		outputImageSizeBkp = make_uint2(outputSize.x, outputSize.y);
-		if(ocl_output_render_buffer != NULL){
-		    std::cout << "Release" << std::endl;
-		    clError = clReleaseMemObject(ocl_output_render_buffer);
-		    checkErr(clError, "clReleaseMemObject");
-		}
-		ocl_output_render_buffer = clCreateBuffer(contexts[1], CL_MEM_WRITE_ONLY, outputSize.x * outputSize.y * sizeof(uchar4), NULL , &clError);
-		checkErr(clError, "clCreateBuffer output" );
-    }
-
-	// set param and run kernel
-	clError = clSetKernelArg(renderTrack_ocl_kernel, 0, sizeof(cl_mem), &ocl_output_render_buffer);
-	clError &= clSetKernelArg(renderTrack_ocl_kernel, 1, sizeof(cl_mem), &ocl_trackingResult);
-	checkErr(clError, "clSetKernelArg");
-
-	size_t globalWorksize[2] = { computationSize.x, computationSize.y };
-
-	clError = clEnqueueNDRangeKernel(cmd_queues[1][0], renderTrack_ocl_kernel, 2, NULL, globalWorksize, NULL, 0, NULL, NULL);
-	checkErr(clError, "clEnqueueNDRangeKernel");
-
-    clError = clEnqueueReadBuffer(cmd_queues[1][0], ocl_output_render_buffer, CL_FALSE, 0, outputSize.x * outputSize.y * sizeof(uchar4), out, 0, NULL, NULL );  
-    checkErr(clError, "clEnqueueReadBuffer");
-
-}
-
-void Kfusion::renderDepth(uchar4 * out, uint2 outputSize) {
-    // Create render opencl buffer if needed
-    if(outputImageSizeBkp.x < outputSize.x || outputImageSizeBkp.y < outputSize.y || ocl_output_render_buffer == NULL) 
-    {
-		outputImageSizeBkp = make_uint2(outputSize.x, outputSize.y);
-		if(ocl_output_render_buffer != NULL){
-		    std::cout << "Release" << std::endl;
-		    clError = clReleaseMemObject(ocl_output_render_buffer);
-		    checkErr( clError, "clReleaseMemObject");
-		}
-		ocl_output_render_buffer = clCreateBuffer(contexts[1], CL_MEM_WRITE_ONLY, outputSize.x * outputSize.y * sizeof(uchar4), NULL , &clError);
-		checkErr(clError, "clCreateBuffer output" );
-    }
-
-	clError = clSetKernelArg(renderDepth_ocl_kernel, 0, sizeof(cl_mem), &ocl_output_render_buffer);
-	clError &= clSetKernelArg(renderDepth_ocl_kernel, 1, sizeof(cl_mem), &ocl_FloatDepth);
-	clError &= clSetKernelArg(renderDepth_ocl_kernel, 2, sizeof(cl_float), &nearPlane);
-	clError &= clSetKernelArg(renderDepth_ocl_kernel, 3, sizeof(cl_float), &farPlane);
-	checkErr(clError, "clSetKernelArg");
-
-	size_t globalWorksize[2] = { computationSize.x, computationSize.y };
-
-	clError = clEnqueueNDRangeKernel(cmd_queues[1][0], renderDepth_ocl_kernel, 2,
-			NULL, globalWorksize, NULL, 0, NULL, NULL);
-	checkErr(clError, "clEnqueueNDRangeKernel");
-
-
-    clError = clEnqueueReadBuffer(cmd_queues[1][0], ocl_output_render_buffer, CL_FALSE, 0, outputSize.x * outputSize.y * sizeof(uchar4), out, 0, NULL, NULL );  
-    checkErr( clError, "clEnqueueReadBuffer");
-
-}
-
-void Kfusion::dumpVolume(const char* filename) {
-
-	std::ofstream fDumpFile;
-
-	if (filename == NULL) {
-		return;
-	}
-
-	fDumpFile.open(filename, std::ios::out | std::ios::binary);
-	if (fDumpFile.fail()) {
-		std::cout << "Error opening file: " << filename << std::endl;
-		exit(1);
-	}
-	short2 * volume_data = (short2*) malloc(
-			volumeResolution.x * volumeResolution.y * volumeResolution.z
-					* sizeof(short2));
-	clEnqueueReadBuffer(cmd_queues[1][0], ocl_volume_data, CL_TRUE, 0,
-			volumeResolution.x * volumeResolution.y * volumeResolution.z
-					* sizeof(short2), volume_data, 0, NULL, NULL);
-
-	std::cout << "Dumping the volumetric representation on file: " << filename
-			<< std::endl;
-
-	// Dump on file without the y component of the short2 variable
-	for (unsigned int i = 0;
-			i < volumeResolution.x * volumeResolution.y * volumeResolution.z;
-			i++) {
-		fDumpFile.write((char *) (volume_data + i), sizeof(short));
-	}
-
-	fDumpFile.close();
-	free(volume_data);
-
-}
-
 bool Kfusion::preprocessing(const uint16_t * inputDepth, const uint2 inSize) {
-	// bilateral_filter(ScaledDepth[0], inputDepth, inputSize , gaussian, e_delta, radius);
+	startOfKernel = benchmark_tock();
+
 	uint2 outSize = computationSize;
 
 	// Check for unsupported conditions
@@ -521,6 +359,11 @@ bool Kfusion::preprocessing(const uint16_t * inputDepth, const uint2 inSize) {
 	clError = clEnqueueNDRangeKernel(cmd_queues[1][0], mm2meters_ocl_kernel, 2, NULL, globalWorksize, NULL, 0, NULL, NULL);
 	checkErr(clError, "clEnqueueNDRangeKernel");
 
+	endOfKernel = benchmark_tock();
+	timings[1] = endOfKernel - startOfKernel;
+
+	startOfKernel = endOfKernel;
+
 	arg = 0;
 
 	clError = clSetKernelArg(bilateralFilter_ocl_kernel, arg++, sizeof(cl_mem), &ocl_ScaledDepth[0]);
@@ -542,10 +385,15 @@ bool Kfusion::preprocessing(const uint16_t * inputDepth, const uint2 inSize) {
 	clError = clEnqueueNDRangeKernel(cmd_queues[1][0], bilateralFilter_ocl_kernel, 2, NULL, globalWorksize, NULL, 0, NULL, NULL);
 	checkErr(clError, "clEnqueueNDRangeKernel");
 
+	endOfKernel = benchmark_tock();
+	timings[2] = endOfKernel - startOfKernel;
+
 	return true;
 
 }
 bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate, uint frame) {
+	startOfKernel = benchmark_tock();
+
 	if ((frame % tracking_rate) != 0)
 		return false;
 
@@ -588,9 +436,17 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate, uint f
 		checkErr(clError, "clEnqueueNDRangeKernel");
 	}
 
+	endOfKernel = benchmark_tock();
+	timings[3] = endOfKernel - startOfKernel;
+
 	// prepare the 3D information from the input depth maps
 	uint2 localimagesize = computationSize;
+
+	timings[4] = 0.0f;
+	timings[5] = 0.0f;
 	for (unsigned int i = 0; i < iterations.size(); ++i) {
+		startOfKernel = endOfKernel;
+
 		Matrix4 invK = getInverseCameraMatrix(k / float(1 << i));
 
 		uint2 imageSize = localimagesize;
@@ -618,6 +474,11 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate, uint f
 		clError = clEnqueueNDRangeKernel(cmd_queues[1][0], depth2vertex_ocl_kernel, 2, NULL, globalWorksize, NULL, 0, NULL, NULL);
 		checkErr(clError, "clEnqueueNDRangeKernel");
 
+		endOfKernel = benchmark_tock();
+		timings[4] += endOfKernel - startOfKernel;
+
+		startOfKernel = endOfKernel;
+
 		arg = 0;
 		clError = clSetKernelArg(vertex2normal_ocl_kernel, arg++, sizeof(cl_mem), &ocl_inputNormal[i]);
 		sprintf(errStr, "clSetKernelArg%d", arg);
@@ -638,10 +499,18 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate, uint f
 		checkErr(clError, "clEnqueueNDRangeKernel");
 
 		localimagesize = make_uint2(localimagesize.x / 2, localimagesize.y / 2);
+
+		endOfKernel = benchmark_tock();
+		timings[5] += endOfKernel - startOfKernel;
 	}
+
+	timings[6] = 0.0f;
+	timings[7] = 0.0f;
+	startOfKernel = endOfKernel;
 
 	oldPose = pose;
 	const Matrix4 projectReference = getCameraMatrix(k) * inverse(raycastPose);
+	bool updatePoseKernelRes, checkPoseKernelRes;
 
 	for (int level = iterations.size() - 1; level >= 0; --level) {
 		uint2 localimagesize = make_uint2(computationSize.x / (int) pow(2, level), computationSize.y / (int) pow(2, level));
@@ -697,6 +566,11 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate, uint f
 			clError = clEnqueueNDRangeKernel(cmd_queues[1][0], track_ocl_kernel, 2, NULL, globalWorksize, NULL, 0, NULL, NULL);
 			checkErr(clError, "clEnqueueNDRangeKernel");
 
+			endOfKernel = benchmark_tock();
+			timings[6] += endOfKernel - startOfKernel;
+
+			startOfKernel = endOfKernel;
+
 			arg = 0;
 			clError = clSetKernelArg(reduce_ocl_kernel, arg++, sizeof(cl_mem), &ocl_reduce_output_buffer);
 			sprintf(errStr, "clSetKernelArg%d", arg);
@@ -729,67 +603,48 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate, uint f
 				values[0] += values[j];
 			}
 
-			if (updatePoseKernel(pose, reduceOutputBuffer, icp_threshold)) break;
+			updatePoseKernelRes = updatePoseKernel(pose, reduceOutputBuffer, icp_threshold);
+			endOfKernel = benchmark_tock();
+			timings[7] += endOfKernel - startOfKernel;
+
+			startOfKernel = endOfKernel;
+
+			if (updatePoseKernelRes) break;
 		}
 	}
 
-	return checkPoseKernel(pose, oldPose, reduceOutputBuffer, computationSize, track_threshold);
+	checkPoseKernelRes = checkPoseKernel(pose, oldPose, reduceOutputBuffer, computationSize, track_threshold);
+	endOfKernel = benchmark_tock();
+	timings[6] += endOfKernel - startOfKernel;
+
+	return checkPoseKernelRes;
 }
 
-bool Kfusion::raycasting(float4 k, float mu, uint frame) {
-	bool doRaycast = false;
-	float largestep = mu * 0.75f;
+bool updatePoseKernel(Matrix4 & pose, const float * output, float icp_threshold) {
+	// Update the pose regarding the tracking result
+	TooN::Matrix<8, 32, const float, TooN::Reference::RowMajor> values(output);
+	TooN::Vector<6> x = solve(values[0].slice<1, 27>());
+	TooN::SE3<> delta(x);
+	pose = toMatrix4(delta) * pose;
 
-	if (frame > 2) {
-		checkErr(clError, "clEnqueueNDRangeKernel");
-		raycastPose = pose;
-		const Matrix4 view = raycastPose * getInverseCameraMatrix(k);
+	// Return validity test result of the tracking
+	if (norm(x) < icp_threshold) return true;
+	return false;
+}
 
-		int arg = 0;
-		char errStr[20];
-
-		clError = clSetKernelArg(raycast_ocl_kernel, arg++, sizeof(cl_mem), (void*) &ocl_vertex);
-		sprintf(errStr, "clSetKernelArg%d", arg);
-		checkErr(clError, errStr);
-		clError = clSetKernelArg(raycast_ocl_kernel, arg++, sizeof(cl_mem), (void*) &ocl_normal);
-		sprintf(errStr, "clSetKernelArg%d", arg);
-		checkErr(clError, errStr);
-		clError = clSetKernelArg(raycast_ocl_kernel, arg++, sizeof(cl_mem), (void*) &ocl_volume_data);
-		sprintf(errStr, "clSetKernelArg%d", arg);
-		checkErr(clError, errStr);
-		clError = clSetKernelArg(raycast_ocl_kernel, arg++, sizeof(cl_uint3), (void*) &volumeResolution);
-		sprintf(errStr, "clSetKernelArg%d", arg);
-		checkErr(clError, errStr);
-		clError = clSetKernelArg(raycast_ocl_kernel, arg++, sizeof(cl_float3), (void*) &volumeDimensions);
-		sprintf(errStr, "clSetKernelArg%d", arg);
-		checkErr(clError, errStr);
-		clError = clSetKernelArg(raycast_ocl_kernel, arg++, sizeof(Matrix4), (void*) &view);
-		sprintf(errStr, "clSetKernelArg%d", arg);
-		checkErr(clError, errStr);
-		clError = clSetKernelArg(raycast_ocl_kernel, arg++, sizeof(cl_float), (void*) &nearPlane);
-		sprintf(errStr, "clSetKernelArg%d", arg);
-		checkErr(clError, errStr);
-		clError = clSetKernelArg(raycast_ocl_kernel, arg++, sizeof(cl_float), (void*) &farPlane);
-		sprintf(errStr, "clSetKernelArg%d", arg);
-		checkErr(clError, errStr);
-		clError = clSetKernelArg(raycast_ocl_kernel, arg++, sizeof(cl_float), (void*) &step);
-		sprintf(errStr, "clSetKernelArg%d", arg);
-		checkErr(clError, errStr);
-		clError = clSetKernelArg(raycast_ocl_kernel, arg++, sizeof(cl_float), (void*) &largestep);
-		sprintf(errStr, "clSetKernelArg%d", arg);
-		checkErr(clError, errStr);
-
-		size_t RaycastglobalWorksize[2] = { computationSize.x, computationSize.y };
-
-		clError = clEnqueueNDRangeKernel(cmd_queues[1][0], raycast_ocl_kernel, 2, NULL, RaycastglobalWorksize, NULL, 0, NULL, NULL);
-		checkErr(clError, "clEnqueueNDRangeKernel");
-
+bool checkPoseKernel(Matrix4 & pose, Matrix4 oldPose, const float * output, uint2 imageSize, float track_threshold) {
+	// Check the tracking result, and go back to the previous camera position if necessary
+	if ((std::sqrt(output[0] / output[28]) > 2e-2) || (output[28] / (imageSize.x * imageSize.y) < track_threshold)) {
+		pose = oldPose;
+		return false;
+	} else {
+		return true;
 	}
-
-	return doRaycast;
 }
 
 bool Kfusion::integration(float4 k, uint integration_rate, float mu, uint frame) {
+	startOfKernel = benchmark_tock();
+
 	bool doIntegrate = checkPoseKernel(pose, oldPose, reduceOutputBuffer, computationSize, track_threshold);
 
 	if ((doIntegrate && ((frame % integration_rate) == 0)) || (frame <= 3)) {
@@ -849,7 +704,239 @@ bool Kfusion::integration(float4 k, uint integration_rate, float mu, uint frame)
 		doIntegrate = false;
 	}
 
+	endOfKernel = benchmark_tock();
+	timings[8] = endOfKernel - startOfKernel;
+
 	return doIntegrate;
+}
+
+bool Kfusion::raycasting(float4 k, float mu, uint frame) {
+	startOfKernel = benchmark_tock();
+
+	bool doRaycast = false;
+	float largestep = mu * 0.75f;
+
+	if (frame > 2) {
+		checkErr(clError, "clEnqueueNDRangeKernel");
+		raycastPose = pose;
+		const Matrix4 view = raycastPose * getInverseCameraMatrix(k);
+
+		int arg = 0;
+		char errStr[20];
+
+		clError = clSetKernelArg(raycast_ocl_kernel, arg++, sizeof(cl_mem), (void*) &ocl_vertex);
+		sprintf(errStr, "clSetKernelArg%d", arg);
+		checkErr(clError, errStr);
+		clError = clSetKernelArg(raycast_ocl_kernel, arg++, sizeof(cl_mem), (void*) &ocl_normal);
+		sprintf(errStr, "clSetKernelArg%d", arg);
+		checkErr(clError, errStr);
+		clError = clSetKernelArg(raycast_ocl_kernel, arg++, sizeof(cl_mem), (void*) &ocl_volume_data);
+		sprintf(errStr, "clSetKernelArg%d", arg);
+		checkErr(clError, errStr);
+		clError = clSetKernelArg(raycast_ocl_kernel, arg++, sizeof(cl_uint3), (void*) &volumeResolution);
+		sprintf(errStr, "clSetKernelArg%d", arg);
+		checkErr(clError, errStr);
+		clError = clSetKernelArg(raycast_ocl_kernel, arg++, sizeof(cl_float3), (void*) &volumeDimensions);
+		sprintf(errStr, "clSetKernelArg%d", arg);
+		checkErr(clError, errStr);
+		clError = clSetKernelArg(raycast_ocl_kernel, arg++, sizeof(Matrix4), (void*) &view);
+		sprintf(errStr, "clSetKernelArg%d", arg);
+		checkErr(clError, errStr);
+		clError = clSetKernelArg(raycast_ocl_kernel, arg++, sizeof(cl_float), (void*) &nearPlane);
+		sprintf(errStr, "clSetKernelArg%d", arg);
+		checkErr(clError, errStr);
+		clError = clSetKernelArg(raycast_ocl_kernel, arg++, sizeof(cl_float), (void*) &farPlane);
+		sprintf(errStr, "clSetKernelArg%d", arg);
+		checkErr(clError, errStr);
+		clError = clSetKernelArg(raycast_ocl_kernel, arg++, sizeof(cl_float), (void*) &step);
+		sprintf(errStr, "clSetKernelArg%d", arg);
+		checkErr(clError, errStr);
+		clError = clSetKernelArg(raycast_ocl_kernel, arg++, sizeof(cl_float), (void*) &largestep);
+		sprintf(errStr, "clSetKernelArg%d", arg);
+		checkErr(clError, errStr);
+
+		size_t RaycastglobalWorksize[2] = { computationSize.x, computationSize.y };
+
+		clError = clEnqueueNDRangeKernel(cmd_queues[1][0], raycast_ocl_kernel, 2, NULL, RaycastglobalWorksize, NULL, 0, NULL, NULL);
+		checkErr(clError, "clEnqueueNDRangeKernel");
+
+	}
+
+	endOfKernel = benchmark_tock();
+	timings[9] = endOfKernel - startOfKernel;
+
+	return doRaycast;
+}
+
+void Kfusion::renderDepth(uchar4 * out, uint2 outputSize) {
+	startOfKernel = benchmark_tock();
+
+    // Create render opencl buffer if needed
+    if(outputImageSizeBkp.x < outputSize.x || outputImageSizeBkp.y < outputSize.y || ocl_output_render_buffer == NULL) 
+    {
+		outputImageSizeBkp = make_uint2(outputSize.x, outputSize.y);
+		if(ocl_output_render_buffer != NULL){
+		    std::cout << "Release" << std::endl;
+		    clError = clReleaseMemObject(ocl_output_render_buffer);
+		    checkErr( clError, "clReleaseMemObject");
+		}
+		ocl_output_render_buffer = clCreateBuffer(contexts[1], CL_MEM_WRITE_ONLY, outputSize.x * outputSize.y * sizeof(uchar4), NULL , &clError);
+		checkErr(clError, "clCreateBuffer output" );
+    }
+
+	clError = clSetKernelArg(renderDepth_ocl_kernel, 0, sizeof(cl_mem), &ocl_output_render_buffer);
+	clError &= clSetKernelArg(renderDepth_ocl_kernel, 1, sizeof(cl_mem), &ocl_FloatDepth);
+	clError &= clSetKernelArg(renderDepth_ocl_kernel, 2, sizeof(cl_float), &nearPlane);
+	clError &= clSetKernelArg(renderDepth_ocl_kernel, 3, sizeof(cl_float), &farPlane);
+	checkErr(clError, "clSetKernelArg");
+
+	size_t globalWorksize[2] = { computationSize.x, computationSize.y };
+
+	clError = clEnqueueNDRangeKernel(cmd_queues[1][0], renderDepth_ocl_kernel, 2,
+			NULL, globalWorksize, NULL, 0, NULL, NULL);
+	checkErr(clError, "clEnqueueNDRangeKernel");
+
+
+    clError = clEnqueueReadBuffer(cmd_queues[1][0], ocl_output_render_buffer, CL_FALSE, 0, outputSize.x * outputSize.y * sizeof(uchar4), out, 0, NULL, NULL );  
+    checkErr( clError, "clEnqueueReadBuffer");
+
+    endOfKernel = benchmark_tock();
+	timings[10] = endOfKernel - startOfKernel;
+}
+
+void Kfusion::renderTrack(uchar4 * out, uint2 outputSize) {
+	startOfKernel = benchmark_tock();
+
+    // Create render opencl buffer if needed
+    if(outputImageSizeBkp.x < outputSize.x || outputImageSizeBkp.y < outputSize.y || ocl_output_render_buffer == NULL) 
+    {
+		outputImageSizeBkp = make_uint2(outputSize.x, outputSize.y);
+		if(ocl_output_render_buffer != NULL){
+		    std::cout << "Release" << std::endl;
+		    clError = clReleaseMemObject(ocl_output_render_buffer);
+		    checkErr(clError, "clReleaseMemObject");
+		}
+		ocl_output_render_buffer = clCreateBuffer(contexts[1], CL_MEM_WRITE_ONLY, outputSize.x * outputSize.y * sizeof(uchar4), NULL , &clError);
+		checkErr(clError, "clCreateBuffer output" );
+    }
+
+	// set param and run kernel
+	clError = clSetKernelArg(renderTrack_ocl_kernel, 0, sizeof(cl_mem), &ocl_output_render_buffer);
+	clError &= clSetKernelArg(renderTrack_ocl_kernel, 1, sizeof(cl_mem), &ocl_trackingResult);
+	checkErr(clError, "clSetKernelArg");
+
+	size_t globalWorksize[2] = { computationSize.x, computationSize.y };
+
+	clError = clEnqueueNDRangeKernel(cmd_queues[1][0], renderTrack_ocl_kernel, 2, NULL, globalWorksize, NULL, 0, NULL, NULL);
+	checkErr(clError, "clEnqueueNDRangeKernel");
+
+    clError = clEnqueueReadBuffer(cmd_queues[1][0], ocl_output_render_buffer, CL_FALSE, 0, outputSize.x * outputSize.y * sizeof(uchar4), out, 0, NULL, NULL );  
+    checkErr(clError, "clEnqueueReadBuffer");
+
+    endOfKernel = benchmark_tock();
+	timings[11] = endOfKernel - startOfKernel;
+}
+
+void Kfusion::renderVolume(uchar4 * out, uint2 outputSize, int frame, int rate, float4 k, float largestep) {
+	startOfKernel = benchmark_tock();
+
+    if (frame % rate != 0) return;
+    // Create render opencl buffer if needed
+    if(outputImageSizeBkp.x < outputSize.x || outputImageSizeBkp.y < outputSize.y || ocl_output_render_buffer == NULL) {
+		outputImageSizeBkp = make_uint2(outputSize.x, outputSize.y);
+		if(ocl_output_render_buffer != NULL) {
+		    std::cout << "Release" << std::endl;
+		    clError = clReleaseMemObject(ocl_output_render_buffer);
+		    checkErr(clError, "clReleaseMemObject");
+		}
+		ocl_output_render_buffer = clCreateBuffer(contexts[1],  CL_MEM_WRITE_ONLY, outputSize.x * outputSize.y * sizeof(uchar4), NULL , &clError);
+		checkErr(clError, "clCreateBuffer output" );
+    }
+
+	Matrix4 view = *viewPose * getInverseCameraMatrix(k);
+
+	int arg = 0;
+	char errStr[20];
+
+    clError = clSetKernelArg(renderVolume_ocl_kernel, arg++, sizeof(cl_mem), (void*) &ocl_output_render_buffer);
+	sprintf(errStr, "clSetKernelArg%d", arg);
+	checkErr(clError, errStr);
+	clError = clSetKernelArg(renderVolume_ocl_kernel, arg++, sizeof(cl_mem), (void*) &ocl_volume_data);
+	sprintf(errStr, "clSetKernelArg%d", arg);
+	checkErr(clError, errStr);
+	clError = clSetKernelArg(renderVolume_ocl_kernel, arg++, sizeof(cl_uint3), (void*) &volumeResolution);
+	sprintf(errStr, "clSetKernelArg%d", arg);
+	checkErr(clError, errStr);
+	clError = clSetKernelArg(renderVolume_ocl_kernel, arg++, sizeof(cl_float3), (void*) &volumeDimensions);
+	sprintf(errStr, "clSetKernelArg%d", arg);
+	checkErr(clError, errStr);
+	clError = clSetKernelArg(renderVolume_ocl_kernel, arg++, sizeof(Matrix4), (void*) &view);
+	sprintf(errStr, "clSetKernelArg%d", arg);
+	checkErr(clError, errStr);
+	clError = clSetKernelArg(renderVolume_ocl_kernel, arg++, sizeof(cl_float), (void*) &nearPlane);
+	sprintf(errStr, "clSetKernelArg%d", arg);
+	checkErr(clError, errStr);
+	clError = clSetKernelArg(renderVolume_ocl_kernel, arg++, sizeof(cl_float), (void*) &farPlane);
+	sprintf(errStr, "clSetKernelArg%d", arg);
+	checkErr(clError, errStr);
+	clError = clSetKernelArg(renderVolume_ocl_kernel, arg++, sizeof(cl_float), (void*) &step);
+	sprintf(errStr, "clSetKernelArg%d", arg);
+	checkErr(clError, errStr);
+	clError = clSetKernelArg(renderVolume_ocl_kernel, arg++, sizeof(cl_float), (void*) &largestep);
+	sprintf(errStr, "clSetKernelArg%d", arg);
+	checkErr(clError, errStr);
+	clError = clSetKernelArg(renderVolume_ocl_kernel, arg++, sizeof(cl_float3), (void*) &light);
+	sprintf(errStr, "clSetKernelArg%d", arg);
+	checkErr(clError, errStr);
+	clError = clSetKernelArg(renderVolume_ocl_kernel, arg++, sizeof(cl_float3), (void*) &ambient);
+	sprintf(errStr, "clSetKernelArg%d", arg);
+	checkErr(clError, errStr);
+
+	size_t globalWorksize[2] = { computationSize.x, computationSize.y };
+
+	clError = clEnqueueNDRangeKernel(cmd_queues[1][0], renderVolume_ocl_kernel, 2, NULL, globalWorksize, NULL, 0, NULL, NULL);
+	checkErr(clError, "clEnqueueNDRangeKernel");
+
+    clError = clEnqueueReadBuffer(cmd_queues[1][0], ocl_output_render_buffer, CL_FALSE, 0, outputSize.x * outputSize.y * sizeof(uchar4), out, 0, NULL, NULL );  
+    checkErr(clError, "clEnqueueReadBuffer");
+
+    endOfKernel = benchmark_tock();
+	timings[12] = endOfKernel - startOfKernel;
+}
+
+void Kfusion::dumpVolume(const char* filename) {
+
+	std::ofstream fDumpFile;
+
+	if (filename == NULL) {
+		return;
+	}
+
+	fDumpFile.open(filename, std::ios::out | std::ios::binary);
+	if (fDumpFile.fail()) {
+		std::cout << "Error opening file: " << filename << std::endl;
+		exit(1);
+	}
+	short2 * volume_data = (short2*) malloc(
+			volumeResolution.x * volumeResolution.y * volumeResolution.z
+					* sizeof(short2));
+	clEnqueueReadBuffer(cmd_queues[1][0], ocl_volume_data, CL_TRUE, 0,
+			volumeResolution.x * volumeResolution.y * volumeResolution.z
+					* sizeof(short2), volume_data, 0, NULL, NULL);
+
+	std::cout << "Dumping the volumetric representation on file: " << filename
+			<< std::endl;
+
+	// Dump on file without the y component of the short2 variable
+	for (unsigned int i = 0;
+			i < volumeResolution.x * volumeResolution.y * volumeResolution.z;
+			i++) {
+		fDumpFile.write((char *) (volume_data + i), sizeof(short));
+	}
+
+	fDumpFile.close();
+	free(volume_data);
+
 }
 
 void Kfusion::computeFrame(const ushort * inputDepth, const uint2 inputSize, float4 k, uint integration_rate, uint tracking_rate, float icp_threshold, float mu, const uint frame) {
@@ -860,7 +947,5 @@ void Kfusion::computeFrame(const ushort * inputDepth, const uint2 inputSize, flo
 }
 
 void synchroniseDevices() {
-	//clFinish(cmd_queues[0][0]);
 	clFinish(cmd_queues[1][0]);
-	//clFinish(cmd_queues[1][1]);
 }
