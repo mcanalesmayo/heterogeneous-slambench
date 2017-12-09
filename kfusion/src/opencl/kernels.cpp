@@ -1058,7 +1058,7 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 			size_t RglobalWorksize[1] = { size_of_group * number_of_groups };
 			size_t RlocalWorksize[1] = { size_of_group }; // Dont change it !
 
-			clError = clEnqueueNDRangeKernel(cmd_queues[1][0], reduce_ocl_kernel, 1, NULL, RglobalWorksize, NULL, 0, NULL, NULL);
+			clError = clEnqueueNDRangeKernel(cmd_queues[1][0], reduce_ocl_kernel, 1, NULL, RglobalWorksize, RlocalWorksize, 0, NULL, NULL);
             checkErr(clError, "clEnqueueNDRangeKernel");
 
             clError = clEnqueueReadBuffer(cmd_queues[1][0], ocl_reduce_output_buffer, CL_TRUE, 0, number_of_groups * 32 * sizeof(float), reductionoutput, 0, NULL, NULL);
