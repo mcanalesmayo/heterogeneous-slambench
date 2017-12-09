@@ -1034,7 +1034,7 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 
 			startOfKernel = endOfKernel;
 
-			clEnqueueWriteBuffer(cmd_queues[1][0], ocl_trackingResult, CL_TRUE, 0, sizeof(TrackData) * (localimagesize.x * localimagesize.y), trackingResult, 0, NULL, NULL);
+			clError = clEnqueueWriteBuffer(cmd_queues[1][0], ocl_trackingResult, CL_TRUE, 0, sizeof(TrackData) * (localimagesize.x * localimagesize.y), trackingResult, 0, NULL, NULL);
 			checkErr(clError, "clEnqueueReadBuffer");
 
 			int arg = 0;
