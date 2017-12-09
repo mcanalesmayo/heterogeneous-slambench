@@ -582,7 +582,7 @@ __kernel void reduceKernel (
 
 	for(uint y = blockIdx; y < size.y; y += gridDim) {
 		for(uint x = sline; x < size.x; x += blockDim ) {
-			const TrackData row = J[x + y * JSize.x];
+			const TrackData row = J[x + y * size.x];
 			if(row.result < 1) {
 				info[1] += row.result == -4 ? 1 : 0;
 				info[2] += row.result == -5 ? 1 : 0;
