@@ -62,9 +62,9 @@ double startOfKernel, endOfKernel;
 
 cl_kernel raycast_ocl_kernel;
 
-cl_mem ocl_vertexFPGA = NULL;
-cl_mem ocl_normalFPGA = NULL;
-cl_mem ocl_volume_dataFPGA = NULL;
+cl_mem ocl_vertex = NULL;
+cl_mem ocl_normal = NULL;
+cl_mem ocl_volume_data = NULL;
 
 uint2 computationSizeBkp = make_uint2(0, 0);
 uint2 outputImageSizeBkp = make_uint2(0, 0);
@@ -110,7 +110,7 @@ void clean() {
 void Kfusion::languageSpecificConstructor() {
 	init();
 
-    raycast_ocl_kernel = clCreateKernel(programs[0], "raycastKernel", &clError);
+    raycast_ocl_kernel = clCreateKernel(programs[1], "raycastKernel", &clError);
     checkErr(clError, "clCreateKernel");
 
 	if (getenv("KERNEL_TIMINGS"))
@@ -139,11 +139,11 @@ void Kfusion::languageSpecificConstructor() {
 			sizeof(float) * computationSize.x * computationSize.y, 1);
 	vertex = (float3*) calloc(
 			sizeof(float3) * computationSize.x * computationSize.y, 1);
-	ocl_vertexFPGA = clCreateBuffer(contexts[0], CL_MEM_READ_WRITE, sizeof(float3) * computationSize.x * computationSize.y, NULL, &clError);
+	ocl_vertex = clCreateBuffer(contexts[1], CL_MEM_READ_WRITE, sizeof(float3) * computationSize.x * computationSize.y, NULL, &clError);
 	checkErr(clError, "clCreateBuffer");
 	normal = (float3*) calloc(
 			sizeof(float3) * computationSize.x * computationSize.y, 1);
-	ocl_normalFPGA = clCreateBuffer(contexts[0], CL_MEM_READ_WRITE, sizeof(float3) * computationSize.x * computationSize.y, NULL, &clError);
+	ocl_normal = clCreateBuffer(contexts[1], CL_MEM_READ_WRITE, sizeof(float3) * computationSize.x * computationSize.y, NULL, &clError);
 	checkErr(clError, "clCreateBuffer");
 	trackingResult = (TrackData*) calloc(
 			sizeof(TrackData) * computationSize.x * computationSize.y, 1);
@@ -159,7 +159,7 @@ void Kfusion::languageSpecificConstructor() {
 
 	// ********* END : Generate the gaussian *************
 
-	ocl_volume_dataFPGA = clCreateBuffer(contexts[0], CL_MEM_READ_WRITE, sizeof(short2) * volumeResolution.x * volumeResolution.y * volumeResolution.z, NULL, &clError);
+	ocl_volume_data = clCreateBuffer(contexts[1], CL_MEM_READ_WRITE, sizeof(short2) * volumeResolution.x * volumeResolution.y * volumeResolution.z, NULL, &clError);
 	checkErr(clError, "clCreateBuffer");
 
 	volume.init(volumeResolution, volumeDimensions);
@@ -167,20 +167,20 @@ void Kfusion::languageSpecificConstructor() {
 }
 
 Kfusion::~Kfusion() {
-    if (ocl_vertexFPGA) {
-        clError = clReleaseMemObject(ocl_vertexFPGA);
+    if (ocl_vertex) {
+        clError = clReleaseMemObject(ocl_vertex);
         checkErr(clError, "clReleaseMem");
-        ocl_vertexFPGA = NULL;
+        ocl_vertex = NULL;
     }
-    if (ocl_normalFPGA) {
-        clError = clReleaseMemObject(ocl_normalFPGA);
+    if (ocl_normal) {
+        clError = clReleaseMemObject(ocl_normal);
         checkErr(clError, "clReleaseMem");
-        ocl_normalFPGA = NULL;
+        ocl_normal = NULL;
     }
-    if (ocl_volume_dataFPGA) {
-        clError = clReleaseMemObject(ocl_volume_dataFPGA);
+    if (ocl_volume_data) {
+        clError = clReleaseMemObject(ocl_volume_data);
         checkErr(clError, "clReleaseMem");
-        ocl_volume_dataFPGA = NULL;
+        ocl_volume_data = NULL;
 	}
 
 	free(floatDepth);
@@ -1040,16 +1040,16 @@ bool Kfusion::raycasting(float4 k, float mu, uint frame) {
         int arg = 0;
         char errStr[20];
 
-        clError = clEnqueueWriteBuffer(cmd_queues[0][0], ocl_volume_dataFPGA, CL_TRUE, 0, sizeof(short2) * volumeResolution.x * volumeResolution.y * volumeResolution.z, volume.data, 0, NULL, NULL );
+        clError = clEnqueueWriteBuffer(cmd_queues[1][0], ocl_volume_data, CL_TRUE, 0, sizeof(short2) * volumeResolution.x * volumeResolution.y * volumeResolution.z, volume.data, 0, NULL, NULL );
 		checkErr(clError, "clEnqueueWriteBuffer");
 
-        clError = clSetKernelArg(raycast_ocl_kernel, arg++, sizeof(cl_mem), (void*) &ocl_vertexFPGA);
+        clError = clSetKernelArg(raycast_ocl_kernel, arg++, sizeof(cl_mem), (void*) &ocl_vertex);
         sprintf(errStr, "clSetKernelArg%d", arg);
         checkErr(clError, errStr);
-        clError = clSetKernelArg(raycast_ocl_kernel, arg++, sizeof(cl_mem), (void*) &ocl_normalFPGA);
+        clError = clSetKernelArg(raycast_ocl_kernel, arg++, sizeof(cl_mem), (void*) &ocl_normal);
         sprintf(errStr, "clSetKernelArg%d", arg);
         checkErr(clError, errStr);
-        clError = clSetKernelArg(raycast_ocl_kernel, arg++, sizeof(cl_mem), (void*) &ocl_volume_dataFPGA);
+        clError = clSetKernelArg(raycast_ocl_kernel, arg++, sizeof(cl_mem), (void*) &ocl_volume_data);
         sprintf(errStr, "clSetKernelArg%d", arg);
         checkErr(clError, errStr);
         clError = clSetKernelArg(raycast_ocl_kernel, arg++, sizeof(cl_uint3), (void*) &volumeResolution);
@@ -1058,16 +1058,7 @@ bool Kfusion::raycasting(float4 k, float mu, uint frame) {
         clError = clSetKernelArg(raycast_ocl_kernel, arg++, sizeof(cl_float3), (void*) &volumeDimensions);
         sprintf(errStr, "clSetKernelArg%d", arg);
         checkErr(clError, errStr);
-        clError = clSetKernelArg(raycast_ocl_kernel, arg++, sizeof(cl_float4), (void*) &(view.data[0]));
-        sprintf(errStr, "clSetKernelArg%d", arg);
-        checkErr(clError, errStr);
-        clError = clSetKernelArg(raycast_ocl_kernel, arg++, sizeof(cl_float4), (void*) &(view.data[1]));
-        sprintf(errStr, "clSetKernelArg%d", arg);
-        checkErr(clError, errStr);
-        clError = clSetKernelArg(raycast_ocl_kernel, arg++, sizeof(cl_float4), (void*) &(view.data[2]));
-        sprintf(errStr, "clSetKernelArg%d", arg);
-        checkErr(clError, errStr);
-        clError = clSetKernelArg(raycast_ocl_kernel, arg++, sizeof(cl_float4), (void*) &(view.data[3]));
+        clError = clSetKernelArg(raycast_ocl_kernel, arg++, sizeof(Matrix4), (void*) &view);
         sprintf(errStr, "clSetKernelArg%d", arg);
         checkErr(clError, errStr);
         clError = clSetKernelArg(raycast_ocl_kernel, arg++, sizeof(cl_float), (void*) &nearPlane);
@@ -1085,12 +1076,12 @@ bool Kfusion::raycasting(float4 k, float mu, uint frame) {
 
         size_t RaycastglobalWorksize[2] = { computationSize.x, computationSize.y };
 
-        clError = clEnqueueNDRangeKernel(cmd_queues[0][0], raycast_ocl_kernel, 2, NULL, RaycastglobalWorksize, NULL, 0, NULL, NULL);
+        clError = clEnqueueNDRangeKernel(cmd_queues[1][0], raycast_ocl_kernel, 2, NULL, RaycastglobalWorksize, NULL, 0, NULL, NULL);
         checkErr(clError, "clEnqueueNDRangeKernel");
 
-        clError = clEnqueueReadBuffer(cmd_queues[0][0], ocl_normalFPGA, CL_TRUE, 0, sizeof(float3) * computationSize.x * computationSize.y, normal, 0, NULL, NULL );
+        clError = clEnqueueReadBuffer(cmd_queues[1][0], ocl_normal, CL_TRUE, 0, sizeof(float3) * computationSize.x * computationSize.y, normal, 0, NULL, NULL );
         checkErr(clError, "clEnqueueReadBuffer");
-        clError = clEnqueueReadBuffer(cmd_queues[0][0], ocl_vertexFPGA, CL_TRUE, 0, sizeof(float3) * computationSize.x * computationSize.y, vertex, 0, NULL, NULL );
+        clError = clEnqueueReadBuffer(cmd_queues[1][0], ocl_vertex, CL_TRUE, 0, sizeof(float3) * computationSize.x * computationSize.y, vertex, 0, NULL, NULL );
         checkErr(clError, "clEnqueueReadBuffer");
 	}
 
@@ -1172,5 +1163,5 @@ void Kfusion::computeFrame(const ushort * inputDepth, const uint2 inputSize,
 
 
 void synchroniseDevices() {
-	clFinish(cmd_queues[0][0]);
+	clFinish(cmd_queues[1][0]);
 }
