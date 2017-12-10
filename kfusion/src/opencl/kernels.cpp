@@ -43,6 +43,23 @@
 
 #endif
 
+inline double benchmark_tock() {
+	synchroniseDevices();
+#ifdef __APPLE__
+	clock_serv_t cclock;
+	mach_timespec_t clockData;
+	host_get_clock_service(mach_host_self(), SYSTEM_CLOCK, &cclock);
+	clock_get_time(cclock, &clockData);
+	mach_port_deallocate(mach_task_self(), cclock);
+#else
+	struct timespec clockData;
+	clock_gettime(CLOCK_MONOTONIC, &clockData);
+#endif
+	return (double) clockData.tv_sec + clockData.tv_nsec / 1000000000.0;
+}
+
+double startOfKernel, endOfKernel;
+
 cl_kernel halfSampleRobustImage_ocl_kernel;
 
 cl_mem * ocl_ScaledDepth = NULL;
@@ -91,12 +108,11 @@ void Kfusion::languageSpecificConstructor() {
 	ocl_ScaledDepth = (cl_mem*) malloc(sizeof(cl_mem) * iterations.size());
 
 	for (unsigned int i = 0; i < iterations.size(); ++i) {
-		printf("%d * (%d * %d) / (%d) sizeof buffer: %d\n", sizeof(float), computationSize.x, computationSize.y, (int) pow(2, i), sizeof(float) * (computationSize.x * computationSize.y) / (int) pow(2, i));
-		ocl_ScaledDepth[i] = clCreateBuffer(contexts[0], CL_MEM_READ_WRITE, sizeof(float) * (computationSize.x * computationSize.y) / (int) pow(2, i), NULL, &clError);
+		ocl_ScaledDepth[i] = clCreateBuffer(contexts[1], CL_MEM_READ_WRITE, sizeof(float) * (computationSize.x * computationSize.y) / (int) pow(2, i), NULL, &clError);
 		checkErr(clError, "clCreateBuffer");
 	}
 
-	halfSampleRobustImage_ocl_kernel = clCreateKernel(programs[0], "halfSampleRobustImageKernel", &clError);
+	halfSampleRobustImage_ocl_kernel = clCreateKernel(programs[1], "halfSampleRobustImageKernel", &clError);
 	checkErr(clError, "clCreateKernel");
 
 	if (getenv("KERNEL_TIMINGS"))
@@ -657,7 +673,7 @@ void halfSampleRobustImageKernel(uint2 inSize, const float e_d, const int r, int
 
 	size_t globalWorksize[2] = { outSize.x, outSize.y };
 
-	clError = clEnqueueNDRangeKernel(cmd_queues[0][0],
+	clError = clEnqueueNDRangeKernel(cmd_queues[1][0],
 			halfSampleRobustImage_ocl_kernel, 2, NULL, globalWorksize, NULL,
 			0,
 			NULL, NULL);
@@ -958,11 +974,13 @@ bool Kfusion::preprocessing(const ushort * inputDepth, const uint2 inputSize) {
 bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 		uint frame) {
 
+	startOfKernel = benchmark_tock();
+
 	if (frame % tracking_rate != 0)
 		return false;
 
 	/* Write first buffer */
-	clError = clEnqueueWriteBuffer(cmd_queues[0][0], ocl_ScaledDepth[0], CL_TRUE, 0, computationSize.x * computationSize.y * sizeof(float), &ScaledDepth[0][0], 0, NULL, NULL);
+	clError = clEnqueueWriteBuffer(cmd_queues[1][0], ocl_ScaledDepth[0], CL_TRUE, 0, computationSize.x * computationSize.y * sizeof(float), &ScaledDepth[0][0], 0, NULL, NULL);
 	checkErr(clError, "clEnqueueWriteBuffer");
 
 	// half sample the input depth maps into the pyramid levels
@@ -970,6 +988,9 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 		halfSampleRobustImageKernel(make_uint2(computationSize.x / (int) pow(2, i - 1),
 						computationSize.y / (int) pow(2, i - 1)), e_delta * 3, 1, i);
 	}
+
+	endOfKernel = benchmark_tock();
+	timings[3] = endOfKernel - startOfKernel;
 
 	// prepare the 3D information from the input depth maps
 	uint2 localimagesize = computationSize;
@@ -1093,7 +1114,7 @@ void Kfusion::computeFrame(const ushort * inputDepth, const uint2 inputSize,
 
 
 void synchroniseDevices() {
-	clFinish(cmd_queues[0][0]);
+	clFinish(cmd_queues[1][0]);
 	//clFinish(cmd_queues[1][0]);
 	//clFinish(cmd_queues[1][1]);
 }
