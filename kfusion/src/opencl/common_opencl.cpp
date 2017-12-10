@@ -17,7 +17,7 @@
 #define STR(x) XSTR(x)
 
 #ifndef AOCX_PATH
-#define AOCX_PATH "/home/mcanales/Desktop/slambench/kfusion/src/opencl/kernels_fpga_v3_14"
+#define AOCX_PATH "/home/mcanales/heterogeneous-slambench/kfusion/src/opencl/kernels_fpga_raycast_16.1"
 #endif
 
 cl_int             clError;
@@ -34,17 +34,12 @@ int opencl_clean(void) {
 
     // release resources
     clError &= clReleaseProgram(programs[0]);
-    clError &= clReleaseProgram(programs[1]);
     clError &= clReleaseCommandQueue(cmd_queues[0][0]);
-    clError &= clReleaseCommandQueue(cmd_queues[1][0]);
     clError &= clReleaseContext(contexts[0]);
-    clError &= clReleaseContext(contexts[1]);
 
     free(cmd_queues[0]);
-    free(cmd_queues[1]);
     free(cmd_queues);
     free(device_lists[0]);
-    free(device_lists[1]);
     free(device_lists);
     free(programs);
     free(contexts);
@@ -96,7 +91,7 @@ int opencl_init(void) {
     // Specifies a list of context property names and their corresponding values. Each property name is immediately followed by the corresponding desired value.
     // The list is terminated with 0. properties can be NULL in which case the platform that is selected is implementation-defined.
     // The list of supported properties is described in the table below.
-    cl_context_properties ctxprop_fpga[] = {CL_CONTEXT_PLATFORM, (cl_context_properties) platform_ids[0], 0};
+    cl_context_properties ctxprop_fpga[] = {CL_CONTEXT_PLATFORM, (cl_context_properties) platform_ids[2], 0};
 
     contexts[0] = clCreateContextFromType(ctxprop_fpga, CL_DEVICE_TYPE_ACCELERATOR, NULL, NULL, NULL);
     if(!contexts[0]) {
@@ -129,7 +124,7 @@ int opencl_init(void) {
         }
     }
 
-    clError = clGetDeviceIDs(platform_ids[0], CL_DEVICE_TYPE_ALL, num_devices, device_lists[0], NULL);
+    clError = clGetDeviceIDs(platform_ids[2], CL_DEVICE_TYPE_ALL, num_devices, device_lists[0], NULL);
     if (clError != CL_SUCCESS){
         printf("ERROR: Query for FPGA device ids\n");
         return -1;
@@ -150,67 +145,67 @@ int opencl_init(void) {
     /* ---- */
 
     // NVIDIA CUDA is idx=1
-    cl_context_properties ctxprop_gpu[] = {CL_CONTEXT_PLATFORM, (cl_context_properties) platform_ids[1], 0};
-    contexts[1] = clCreateContextFromType(ctxprop_gpu, CL_DEVICE_TYPE_GPU, NULL, NULL, NULL);
-    if( !contexts[1] ) {
-        printf("ERROR: clCreateContextFromType(%s) failed\n", "GPU");
-        return -1;
-    }
+    // cl_context_properties ctxprop_gpu[] = {CL_CONTEXT_PLATFORM, (cl_context_properties) platform_ids[1], 0};
+    // contexts[1] = clCreateContextFromType(ctxprop_gpu, CL_DEVICE_TYPE_GPU, NULL, NULL, NULL);
+    // if( !contexts[1] ) {
+    //     printf("ERROR: clCreateContextFromType(%s) failed\n", "GPU");
+    //     return -1;
+    // }
 
-    clError = clGetContextInfo(contexts[1], CL_CONTEXT_DEVICES, 0, NULL, &size);
-    num_devices = (int) (size / sizeof(cl_device_id));
-    device_lists[1] = (cl_device_id *) malloc(num_devices * sizeof(cl_device_id));
-    cmd_queues[1] = (cl_command_queue *) malloc(num_devices * sizeof(cl_command_queue));
+    // clError = clGetContextInfo(contexts[1], CL_CONTEXT_DEVICES, 0, NULL, &size);
+    // num_devices = (int) (size / sizeof(cl_device_id));
+    // device_lists[1] = (cl_device_id *) malloc(num_devices * sizeof(cl_device_id));
+    // cmd_queues[1] = (cl_command_queue *) malloc(num_devices * sizeof(cl_command_queue));
     
-    if( clError != CL_SUCCESS || num_devices < 1 ) {
-        printf("ERROR: clGetContextInfo() failed\n");
-        return -1;
-    }
-    clError = clGetContextInfo(contexts[1], CL_CONTEXT_DEVICES, size, device_lists[1], NULL);
-    if( clError != CL_SUCCESS ) {
-        printf("ERROR: clGetContextInfo() failed\n");
-        return -1;
-    }
+    // if( clError != CL_SUCCESS || num_devices < 1 ) {
+    //     printf("ERROR: clGetContextInfo() failed\n");
+    //     return -1;
+    // }
+    // clError = clGetContextInfo(contexts[1], CL_CONTEXT_DEVICES, size, device_lists[1], NULL);
+    // if( clError != CL_SUCCESS ) {
+    //     printf("ERROR: clGetContextInfo() failed\n");
+    //     return -1;
+    // }
 
-    for(int j=0; j<num_devices; j++){
-        cmd_queues[1][j] = clCreateCommandQueue(contexts[1], device_lists[1][j], 0, NULL);
-        if( !cmd_queues[1][j] ) {
-            printf("ERROR: clCreateCommandQueue() GPU %d failed\n", j);
-            return -1;
-        }   
-    }
+    // for(int j=0; j<num_devices; j++){
+    //     cmd_queues[1][j] = clCreateCommandQueue(contexts[1], device_lists[1][j], 0, NULL);
+    //     if( !cmd_queues[1][j] ) {
+    //         printf("ERROR: clCreateCommandQueue() GPU %d failed\n", j);
+    //         return -1;
+    //     }   
+    // }
 
-    // try to read the kernel source
-    int sourcesize = 1024*1024;
-    char *source = (char *) calloc(sourcesize, sizeof(char)); 
-    if(!source) {
-        printf("ERROR: calloc(%d) failed\n", sourcesize);
-        return -1;
-    }
+    // // try to read the kernel source
+    // int sourcesize = 1024*1024;
+    // char *source = (char *) calloc(sourcesize, sizeof(char)); 
+    // if(!source) {
+    //     printf("ERROR: calloc(%d) failed\n", sourcesize);
+    //     return -1;
+    // }
 
-    char const * tempchar = "/home/mcanales/Desktop/slambench/kfusion/src/opencl/kernels.cl";
-    FILE *fp = fopen(tempchar, "rb"); 
-    if(!fp) {
-        printf("ERROR: unable to open '%s'\n", tempchar);
-        return -1;
-    }
-    fread(source + strlen(source), sourcesize, 1, fp);
-    fclose(fp);
+    // char const * tempchar = "/home/mcanales/Desktop/slambench/kfusion/src/opencl/kernels.cl";
+    // FILE *fp = fopen(tempchar, "rb"); 
+    // if(!fp) {
+    //     printf("ERROR: unable to open '%s'\n", tempchar);
+    //     return -1;
+    // }
+    // fread(source + strlen(source), sourcesize, 1, fp);
+    // fclose(fp);
 
-    cl_int clError = 0;
-    const char *slist[2] = { source, 0 };
+    // cl_int clError = 0;
+    // const char *slist[2] = { source, 0 };
 
-    // create and build the GPU program
-    programs[1] = clCreateProgramWithSource(contexts[1], 1, slist, NULL, &clError);
-    if(clError != CL_SUCCESS) {
-        printf("ERROR: GPUs clCreateProgramWithSource() => %d\n", clError);
-        return -1;
-    }
-    clError = clBuildProgram(programs[1], 0, NULL, NULL, NULL, NULL);
-    if(clError != CL_SUCCESS) {
-        printf("ERROR: GPUs clBuildProgram() => %d\n", clError);
-        return -1;
-    }
+    // // create and build the GPU program
+    // programs[1] = clCreateProgramWithSource(contexts[1], 1, slist, NULL, &clError);
+    // if(clError != CL_SUCCESS) {
+    //     printf("ERROR: GPUs clCreateProgramWithSource() => %d\n", clError);
+    //     return -1;
+    // }
+    // clError = clBuildProgram(programs[1], 0, NULL, NULL, NULL, NULL);
+    // if(clError != CL_SUCCESS) {
+    //     printf("ERROR: GPUs clBuildProgram() => %d\n", clError);
+    //     return -1;
+    // }
 
     return 0;
 
