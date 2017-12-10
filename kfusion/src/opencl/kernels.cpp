@@ -43,6 +43,23 @@
 
 #endif
 
+inline double benchmark_tock() {
+	synchroniseDevices();
+#ifdef __APPLE__
+	clock_serv_t cclock;
+	mach_timespec_t clockData;
+	host_get_clock_service(mach_host_self(), SYSTEM_CLOCK, &cclock);
+	clock_get_time(cclock, &clockData);
+	mach_port_deallocate(mach_task_self(), cclock);
+#else
+	struct timespec clockData;
+	clock_gettime(CLOCK_MONOTONIC, &clockData);
+#endif
+	return (double) clockData.tv_sec + clockData.tv_nsec / 1000000000.0;
+}
+
+double startOfKernel, endOfKernel;
+
 cl_kernel reduce_ocl_kernel;
 
 cl_mem ocl_reduce_output_buffer = NULL;
@@ -52,7 +69,7 @@ cl_mem ocl_trackingResult = NULL;
 static const size_t size_of_group = 64;
 static const size_t number_of_groups = 8;
 
-
+bool updatePoseKernelRes;
 
 // input once
 float * gaussian;
@@ -99,12 +116,12 @@ void Kfusion::languageSpecificConstructor() {
 		print_kernel_timing = true;
 
 	
-	reduce_ocl_kernel = clCreateKernel(programs[0], "reduceKernel", &clError);
+	reduce_ocl_kernel = clCreateKernel(programs[1], "reduceKernel", &clError);
 	checkErr(clError, "clCreateKernel");
 
-	ocl_trackingResult = clCreateBuffer(contexts[0], CL_MEM_READ_WRITE, sizeof(TrackData) * computationSize.x * computationSize.y, NULL, &clError);
+	ocl_trackingResult = clCreateBuffer(contexts[1], CL_MEM_READ_WRITE, sizeof(TrackData) * computationSize.x * computationSize.y, NULL, &clError);
 	checkErr(clError, "clCreateBuffer");
-	ocl_reduce_output_buffer = clCreateBuffer(contexts[0], CL_MEM_WRITE_ONLY, 32 * number_of_groups * sizeof(float), NULL, &clError);
+	ocl_reduce_output_buffer = clCreateBuffer(contexts[1], CL_MEM_WRITE_ONLY, 32 * number_of_groups * sizeof(float), NULL, &clError);
 	checkErr(clError, "clCreateBuffer");
 
 
@@ -984,6 +1001,8 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 	oldPose = pose;
 	const Matrix4 projectReference = getCameraMatrix(k) * inverse(raycastPose);
 
+	timings[7] = 0.0f;
+
 	for (int level = iterations.size() - 1; level >= 0; --level) {
 		uint2 localimagesize = make_uint2(
 				computationSize.x / (int) pow(2, level),
@@ -994,9 +1013,9 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 					localimagesize, vertex, normal, computationSize, pose,
 					projectReference, dist_threshold, normal_threshold);
 
+			startOfKernel = benchmark_tock();
 
-
-			clEnqueueWriteBuffer(cmd_queues[0][0], ocl_trackingResult, CL_TRUE, 0, sizeof(TrackData) * (computationSize.x * computationSize.y), trackingResult, 0, NULL, NULL);
+			clEnqueueWriteBuffer(cmd_queues[1][0], ocl_trackingResult, CL_TRUE, 0, sizeof(TrackData) * (computationSize.x * computationSize.y), trackingResult, 0, NULL, NULL);
 			checkErr(clError, "clEnqueueReadBuffer");
 
 			int arg = 0;
@@ -1020,10 +1039,10 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 			size_t RglobalWorksize[1] = { size_of_group * number_of_groups };
             size_t RlocalWorksize[1] = { size_of_group }; // Dont change it !
 
-            clError = clEnqueueNDRangeKernel(cmd_queues[0][0], reduce_ocl_kernel, 1, NULL, RglobalWorksize, RlocalWorksize, 0, NULL, NULL);
+            clError = clEnqueueNDRangeKernel(cmd_queues[1][0], reduce_ocl_kernel, 1, NULL, RglobalWorksize, RlocalWorksize, 0, NULL, NULL);
             checkErr(clError, "clEnqueueNDRangeKernel");
 
-			clError = clEnqueueReadBuffer(cmd_queues[0][0], ocl_reduce_output_buffer, CL_TRUE, 0, 32 * number_of_groups * sizeof(float), reductionoutput, 0, NULL, NULL);
+			clError = clEnqueueReadBuffer(cmd_queues[1][0], ocl_reduce_output_buffer, CL_TRUE, 0, 32 * number_of_groups * sizeof(float), reductionoutput, 0, NULL, NULL);
 			checkErr(clError, "clEnqueueReadBuffer");
 
 			TooN::Matrix<TooN::Dynamic, TooN::Dynamic, float, TooN::Reference::RowMajor> values(reductionoutput, number_of_groups, 32);
@@ -1032,15 +1051,11 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 				values[0] += values[j];
 			}
 
+			updatePoseKernelRes = updatePoseKernel(pose, reductionoutput, icp_threshold);
+			endOfKernel = benchmark_tock();
+			timings[7] += endOfKernel - startOfKernel;
 
-
-
-
-			/*reduceKernel(reductionoutput, trackingResult, computationSize,
-					localimagesize);*/
-
-			if (updatePoseKernel(pose, reductionoutput, icp_threshold))
-				break;
+			if (updatePoseKernelRes) break;
 
 		}
 	}
@@ -1135,7 +1150,5 @@ void Kfusion::computeFrame(const ushort * inputDepth, const uint2 inputSize,
 
 
 void synchroniseDevices() {
-	clFinish(cmd_queues[0][0]);
-	//clFinish(cmd_queues[1][0]);
-	//clFinish(cmd_queues[1][1]);
+	clFinish(cmd_queues[1][0]);
 }
