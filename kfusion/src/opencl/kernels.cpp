@@ -43,6 +43,23 @@
 
 #endif
 
+inline double benchmark_tock() {
+	synchroniseDevices();
+#ifdef __APPLE__
+	clock_serv_t cclock;
+	mach_timespec_t clockData;
+	host_get_clock_service(mach_host_self(), SYSTEM_CLOCK, &cclock);
+	clock_get_time(cclock, &clockData);
+	mach_port_deallocate(mach_task_self(), cclock);
+#else
+	struct timespec clockData;
+	clock_gettime(CLOCK_MONOTONIC, &clockData);
+#endif
+	return (double) clockData.tv_sec + clockData.tv_nsec / 1000000000.0;
+}
+
+double startOfKernel, endOfKernel;
+
 cl_kernel renderDepth_ocl_kernel;
 
 cl_mem ocl_FloatDepth = NULL;
@@ -91,10 +108,10 @@ void clean() {
 void Kfusion::languageSpecificConstructor() {
 	init();
 
-    renderDepth_ocl_kernel = clCreateKernel(programs[0], "renderDepthKernel", &clError);
+    renderDepth_ocl_kernel = clCreateKernel(programs[1], "renderDepthKernel", &clError);
     checkErr(clError, "clCreateKernel");
 
-    ocl_FloatDepth = clCreateBuffer(contexts[0], CL_MEM_READ_WRITE, sizeof(float) * computationSize.x * computationSize.y, NULL, &clError);
+    ocl_FloatDepth = clCreateBuffer(contexts[1], CL_MEM_READ_WRITE, sizeof(float) * computationSize.x * computationSize.y, NULL, &clError);
     checkErr(clError, "clCreateBuffer");
 
 	if (getenv("KERNEL_TIMINGS"))
@@ -1074,6 +1091,7 @@ void Kfusion::renderTrack(uchar4 * out, uint2 outputSize) {
 }
 
 void Kfusion::renderDepth(uchar4 * out, uint2 outputSize) {
+	startOfKernel = benchmark_tock();
 	//renderDepthKernel(out, floatDepth, outputSize, nearPlane, farPlane);
 
     // Create render opencl buffer if needed
@@ -1085,11 +1103,11 @@ void Kfusion::renderDepth(uchar4 * out, uint2 outputSize) {
             clError = clReleaseMemObject(ocl_output_render_buffer);
             checkErr( clError, "clReleaseMemObject");
         }
-        ocl_output_render_buffer = clCreateBuffer(contexts[0], CL_MEM_WRITE_ONLY, outputSize.x * outputSize.y * sizeof(uchar4), NULL , &clError);
+        ocl_output_render_buffer = clCreateBuffer(contexts[1], CL_MEM_WRITE_ONLY, outputSize.x * outputSize.y * sizeof(uchar4), NULL , &clError);
         checkErr(clError, "clCreateBuffer output" );
     }
 
-    clEnqueueWriteBuffer(cmd_queues[0][0], ocl_FloatDepth, CL_TRUE, 0, computationSize.x * computationSize.y * sizeof(float), floatDepth, 0, NULL, NULL );
+    clEnqueueWriteBuffer(cmd_queues[1][0], ocl_FloatDepth, CL_TRUE, 0, computationSize.x * computationSize.y * sizeof(float), floatDepth, 0, NULL, NULL );
 
     clError = clSetKernelArg(renderDepth_ocl_kernel, 0, sizeof(cl_mem), &ocl_output_render_buffer);
     clError &= clSetKernelArg(renderDepth_ocl_kernel, 1, sizeof(cl_mem), &ocl_FloatDepth);
@@ -1099,13 +1117,16 @@ void Kfusion::renderDepth(uchar4 * out, uint2 outputSize) {
 
     size_t globalWorksize[2] = { computationSize.x, computationSize.y };
 
-    clError = clEnqueueNDRangeKernel(cmd_queues[0][0], renderDepth_ocl_kernel, 2,
+    clError = clEnqueueNDRangeKernel(cmd_queues[1][0], renderDepth_ocl_kernel, 2,
             NULL, globalWorksize, NULL, 0, NULL, NULL);
     checkErr(clError, "clEnqueueNDRangeKernel");
 
 
-    clError = clEnqueueReadBuffer(cmd_queues[0][0], ocl_output_render_buffer, CL_FALSE, 0, outputSize.x * outputSize.y * sizeof(uchar4), out, 0, NULL, NULL );  
+    clError = clEnqueueReadBuffer(cmd_queues[1][0], ocl_output_render_buffer, CL_FALSE, 0, outputSize.x * outputSize.y * sizeof(uchar4), out, 0, NULL, NULL );  
     checkErr( clError, "clEnqueueReadBuffer");
+
+    endOfKernel = benchmark_tock();
+    timings[10] = endOfKernel - startOfKernel;
 }
 
 void Kfusion::computeFrame(const ushort * inputDepth, const uint2 inputSize,
@@ -1119,7 +1140,7 @@ void Kfusion::computeFrame(const ushort * inputDepth, const uint2 inputSize,
 
 
 void synchroniseDevices() {
-	clFinish(cmd_queues[0][0]);
+	clFinish(cmd_queues[1][0]);
 	//clFinish(cmd_queues[1][0]);
 	//clFinish(cmd_queues[1][1]);
 }
