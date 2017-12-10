@@ -43,6 +43,23 @@
 
 #endif
 
+inline double benchmark_tock() {
+	synchroniseDevices();
+#ifdef __APPLE__
+	clock_serv_t cclock;
+	mach_timespec_t clockData;
+	host_get_clock_service(mach_host_self(), SYSTEM_CLOCK, &cclock);
+	clock_get_time(cclock, &clockData);
+	mach_port_deallocate(mach_task_self(), cclock);
+#else
+	struct timespec clockData;
+	clock_gettime(CLOCK_MONOTONIC, &clockData);
+#endif
+	return (double) clockData.tv_sec + clockData.tv_nsec / 1000000000.0;
+}
+
+double startOfKernel, endOfKernel;
+
 cl_kernel integrate_ocl_kernel;
 
 cl_mem ocl_FloatDepth = NULL;
@@ -89,12 +106,12 @@ void clean() {
 void Kfusion::languageSpecificConstructor() {
 	init();
 
-	ocl_FloatDepth = clCreateBuffer(contexts[0], CL_MEM_READ_WRITE, sizeof(float) * computationSize.x * computationSize.y, NULL, &clError);
+	ocl_FloatDepth = clCreateBuffer(contexts[1], CL_MEM_READ_WRITE, sizeof(float) * computationSize.x * computationSize.y, NULL, &clError);
 	checkErr(clError, "clCreateBuffer");
-	ocl_volume_data = clCreateBuffer(contexts[0], CL_MEM_READ_WRITE, sizeof(short2) * volumeResolution.x * volumeResolution.y * volumeResolution.z, NULL, &clError);
+	ocl_volume_data = clCreateBuffer(contexts[1], CL_MEM_READ_WRITE, sizeof(short2) * volumeResolution.x * volumeResolution.y * volumeResolution.z, NULL, &clError);
 	checkErr(clError, "clCreateBuffer");
 
-	integrate_ocl_kernel = clCreateKernel(programs[0], "integrateKernel", &clError);
+	integrate_ocl_kernel = clCreateKernel(programs[1], "integrateKernel", &clError);
 	checkErr(clError, "clCreateKernel");
 
 	if (getenv("KERNEL_TIMINGS"))
@@ -682,10 +699,10 @@ void integrateKernel(Volume vol, const float* depth, uint2 depthSize,
 	int arg = 0;
 	char errStr[20];
 
-	clError = clEnqueueWriteBuffer(cmd_queues[0][0], ocl_FloatDepth, CL_TRUE, 0, sizeof(float) * computationSize.x * computationSize.y, floatDepth, 0, NULL, NULL);
+	clError = clEnqueueWriteBuffer(cmd_queues[1][0], ocl_FloatDepth, CL_TRUE, 0, sizeof(float) * computationSize.x * computationSize.y, floatDepth, 0, NULL, NULL);
 	checkErr(clError, "clEnqueueWriteBuffer");
 
-	clError = clEnqueueWriteBuffer(cmd_queues[0][0], ocl_volume_data, CL_TRUE, 0, vol.size.x * vol.size.y * vol.size.z * sizeof(short2), volume.data, 0, NULL, NULL);
+	clError = clEnqueueWriteBuffer(cmd_queues[1][0], ocl_volume_data, CL_TRUE, 0, vol.size.x * vol.size.y * vol.size.z * sizeof(short2), volume.data, 0, NULL, NULL);
 	checkErr(clError, "clEnqueueWriteBuffer");
 
 	clError = clSetKernelArg(integrate_ocl_kernel, arg++, sizeof(cl_mem), (void*) &ocl_volume_data);
@@ -703,28 +720,10 @@ void integrateKernel(Volume vol, const float* depth, uint2 depthSize,
 	clError = clSetKernelArg(integrate_ocl_kernel, arg++, sizeof(cl_uint2), (void*) &depthSize);
 	sprintf(errStr, "clSetKernelArg%d", arg);
 	checkErr(clError, errStr);
-	clError = clSetKernelArg(integrate_ocl_kernel, arg++, sizeof(float4), (void*) &(invTrack.data[0]));
+	clError = clSetKernelArg(integrate_ocl_kernel, arg++, sizeof(Matrix4), (void*) &invTrack);
 	sprintf(errStr, "clSetKernelArg%d", arg);
 	checkErr(clError, errStr);
-	clError = clSetKernelArg(integrate_ocl_kernel, arg++, sizeof(float4), (void*) &(invTrack.data[1]));
-	sprintf(errStr, "clSetKernelArg%d", arg);
-	checkErr(clError, errStr);
-	clError = clSetKernelArg(integrate_ocl_kernel, arg++, sizeof(float4), (void*) &(invTrack.data[2]));
-	sprintf(errStr, "clSetKernelArg%d", arg);
-	checkErr(clError, errStr);
-	clError = clSetKernelArg(integrate_ocl_kernel, arg++, sizeof(float4), (void*) &(invTrack.data[3]));
-	sprintf(errStr, "clSetKernelArg%d", arg);
-	checkErr(clError, errStr);
-	clError = clSetKernelArg(integrate_ocl_kernel, arg++, sizeof(float4), (void*) &(K.data[0]));
-	sprintf(errStr, "clSetKernelArg%d", arg);
-	checkErr(clError, errStr);
-	clError = clSetKernelArg(integrate_ocl_kernel, arg++, sizeof(float4), (void*) &(K.data[1]));
-	sprintf(errStr, "clSetKernelArg%d", arg);
-	checkErr(clError, errStr);
-	clError = clSetKernelArg(integrate_ocl_kernel, arg++, sizeof(float4), (void*) &(K.data[2]));
-	sprintf(errStr, "clSetKernelArg%d", arg);
-	checkErr(clError, errStr);
-	clError = clSetKernelArg(integrate_ocl_kernel, arg++, sizeof(float4), (void*) &(K.data[3]));
+	clError = clSetKernelArg(integrate_ocl_kernel, arg++, sizeof(Matrix4), (void*) &K);
 	sprintf(errStr, "clSetKernelArg%d", arg);
 	checkErr(clError, errStr);
 	clError = clSetKernelArg(integrate_ocl_kernel, arg++, sizeof(cl_float), (void*) &mu);
@@ -743,10 +742,10 @@ void integrateKernel(Volume vol, const float* depth, uint2 depthSize,
 
 	size_t globalWorksize[2] = { vol.size.x, vol.size.y };
 
-	clError = clEnqueueNDRangeKernel(cmd_queues[0][0], integrate_ocl_kernel, 2, NULL, globalWorksize, NULL, 0, NULL, NULL);
+	clError = clEnqueueNDRangeKernel(cmd_queues[1][0], integrate_ocl_kernel, 2, NULL, globalWorksize, NULL, 0, NULL, NULL);
 	checkErr(clError, "clEnqueueNDRangeKernel");
 
-	clError = clEnqueueReadBuffer(cmd_queues[0][0], ocl_volume_data, CL_TRUE, 0, vol.size.x * vol.size.y * vol.size.z * sizeof(short2), volume.data, 0, NULL, NULL);
+	clError = clEnqueueReadBuffer(cmd_queues[1][0], ocl_volume_data, CL_TRUE, 0, vol.size.x * vol.size.y * vol.size.z * sizeof(short2), volume.data, 0, NULL, NULL);
 	checkErr(clError, "clEnqueueReadBuffer");
 }
 float4 raycast(const Volume volume, const uint2 pos, const Matrix4 view,
@@ -1065,6 +1064,8 @@ bool Kfusion::raycasting(float4 k, float mu, uint frame) {
 bool Kfusion::integration(float4 k, uint integration_rate, float mu,
 		uint frame) {
 
+	startOfKernel = benchmark_tock();
+
 	bool doIntegrate = checkPoseKernel(pose, oldPose, reductionoutput,
 			computationSize, track_threshold);
 
@@ -1075,6 +1076,9 @@ bool Kfusion::integration(float4 k, uint integration_rate, float mu,
 	} else {
 		doIntegrate = false;
 	}
+
+	endOfKernel = benchmark_tock();
+	timings[8] = endOfKernel - startOfKernel;
 
 	return doIntegrate;
 
@@ -1133,7 +1137,7 @@ void Kfusion::computeFrame(const ushort * inputDepth, const uint2 inputSize,
 
 
 void synchroniseDevices() {
-	clFinish(cmd_queues[0][0]);
+	clFinish(cmd_queues[1][0]);
 	//clFinish(cmd_queues[1][0]);
 	//clFinish(cmd_queues[1][1]);
 }
