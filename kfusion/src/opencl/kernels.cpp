@@ -904,7 +904,7 @@ void renderDepthKernel(uchar4* out, float * depth, uint2 depthSize,
 	TOCK("renderDepthKernel", depthSize.x * depthSize.y);
 }
 
-void renderTrackKernel(uchar4* out, uint2 outSize) {
+void renderTrackKernel(uchar4* out, const TrackData* data, uint2 outSize) {
     unsigned int y;
 #pragma omp parallel for \
         shared(out), private(y)
@@ -1096,12 +1096,11 @@ void Kfusion::renderVolume(uchar4 * out, uint2 outputSize, int frame,
 	clError = clEnqueueWriteBuffer(cmd_queues[1][0], ocl_volume_data, CL_TRUE, 0, sizeof(short2) * volumeResolution.x * volumeResolution.y * volumeResolution.z, volume.data, 0, NULL, NULL );
 	checkErr(clError, "clEnqueueWriteBuffer");
 
-	if (frame % rate != 0) return;
+	if (frame % raycast_rendering_rate != 0) return;
     // Create render opencl buffer if needed
     if(outputImageSizeBkp.x < outputSize.x || outputImageSizeBkp.y < outputSize.y || ocl_output_render_buffer == NULL) {
 		outputImageSizeBkp = make_uint2(outputSize.x, outputSize.y);
 		if(ocl_output_render_buffer != NULL) {
-		    std::cout << "Release" << std::endl;
 		    clError = clReleaseMemObject(ocl_output_render_buffer);
 		    checkErr(clError, "clReleaseMemObject");
 		}
@@ -1161,7 +1160,7 @@ void Kfusion::renderVolume(uchar4 * out, uint2 outputSize, int frame,
 }
 
 void Kfusion::renderTrack(uchar4 * out, uint2 outputSize) {
-	renderTrackKernel(out, outputSize);
+	renderTrackKernel(out, trackingResult, outputSize);
 }
 
 void Kfusion::renderDepth(uchar4 * out, uint2 outputSize) {
