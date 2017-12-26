@@ -43,6 +43,23 @@
 
 #endif
 
+inline double benchmark_tock() {
+	synchroniseDevices();
+#ifdef __APPLE__
+	clock_serv_t cclock;
+	mach_timespec_t clockData;
+	host_get_clock_service(mach_host_self(), SYSTEM_CLOCK, &cclock);
+	clock_get_time(cclock, &clockData);
+	mach_port_deallocate(mach_task_self(), cclock);
+#else
+	struct timespec clockData;
+	clock_gettime(CLOCK_MONOTONIC, &clockData);
+#endif
+	return (double) clockData.tv_sec + clockData.tv_nsec / 1000000000.0;
+}
+
+double startOfKernel, endOfKernel;
+
 cl_kernel renderTrack_ocl_kernel;
 
 cl_mem ocl_output_render_buffer = NULL;
@@ -896,7 +913,6 @@ void renderTrackKernel(uchar4* out, uint2 outSize) {
     {
         outputImageSizeBkp = make_uint2(outSize.x, outSize.y);
         if(ocl_output_render_buffer != NULL){
-            std::cout << "Release" << std::endl;
             clError = clReleaseMemObject(ocl_output_render_buffer);
             checkErr(clError, "clReleaseMemObject");
         }
@@ -1079,7 +1095,10 @@ void Kfusion::renderVolume(uchar4 * out, uint2 outputSize, int frame,
 }
 
 void Kfusion::renderTrack(uchar4 * out, uint2 outputSize) {
+	startOfKernel = benchmark_tock();
 	renderTrackKernel(out, outputSize);
+	endOfKernel = benchmark_tock();
+    timings[11] = endOfKernel - startOfKernel;
 }
 
 void Kfusion::renderDepth(uchar4 * out, uint2 outputSize) {
