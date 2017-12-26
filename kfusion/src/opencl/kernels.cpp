@@ -43,6 +43,23 @@
 
 #endif
 
+inline double benchmark_tock() {
+	synchroniseDevices();
+#ifdef __APPLE__
+	clock_serv_t cclock;
+	mach_timespec_t clockData;
+	host_get_clock_service(mach_host_self(), SYSTEM_CLOCK, &cclock);
+	clock_get_time(cclock, &clockData);
+	mach_port_deallocate(mach_task_self(), cclock);
+#else
+	struct timespec clockData;
+	clock_gettime(CLOCK_MONOTONIC, &clockData);
+#endif
+	return (double) clockData.tv_sec + clockData.tv_nsec / 1000000000.0;
+}
+
+double startOfKernel, endOfKernel;
+
 cl_kernel integrate_ocl_kernel;
 
 cl_mem ocl_FloatDepth = NULL;
@@ -1069,8 +1086,11 @@ bool Kfusion::integration(float4 k, uint integration_rate, float mu,
 			computationSize, track_threshold);
 
 	if ((doIntegrate && ((frame % integration_rate) == 0)) || (frame <= 3)) {
+		startOfKernel = benchmark_tock();
 		integrateKernel(volume, floatDepth, computationSize, inverse(pose),
 				getCameraMatrix(k), mu, maxweight, computationSize);
+		endOfKernel = benchmark_tock();
+		timings[8] = endOfKernel - startOfKernel;
 		doIntegrate = true;
 	} else {
 		doIntegrate = false;
