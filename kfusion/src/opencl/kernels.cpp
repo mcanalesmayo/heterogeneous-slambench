@@ -43,6 +43,23 @@
 
 #endif
 
+inline double benchmark_tock() {
+	synchroniseDevices();
+#ifdef __APPLE__
+	clock_serv_t cclock;
+	mach_timespec_t clockData;
+	host_get_clock_service(mach_host_self(), SYSTEM_CLOCK, &cclock);
+	clock_get_time(cclock, &clockData);
+	mach_port_deallocate(mach_task_self(), cclock);
+#else
+	struct timespec clockData;
+	clock_gettime(CLOCK_MONOTONIC, &clockData);
+#endif
+	return (double) clockData.tv_sec + clockData.tv_nsec / 1000000000.0;
+}
+
+double startOfKernel, endOfKernel;
+
 cl_kernel track_ocl_kernel;
 
 cl_mem ocl_trackingResult = NULL;
@@ -1015,14 +1032,21 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 		localimagesize = make_uint2(localimagesize.x / 2, localimagesize.y / 2);
 	}
 
+	timings[6] = 0.0f;
+
+	startOfKernel = benchmark_tock();
 	oldPose = pose;
 	const Matrix4 projectReference = getCameraMatrix(k) * inverse(raycastPose);
+	endOfKernel = benchmark_tock();
+	timings[6] += endOfKernel - startOfKernel;
 
 	for (int level = iterations.size() - 1; level >= 0; --level) {
 		uint2 localimagesize = make_uint2(
 				computationSize.x / (int) pow(2, level),
 				computationSize.y / (int) pow(2, level));
 		for (int i = 0; i < iterations[level]; ++i) {
+			startOfKernel = benchmark_tock();
+
             int arg = 0;
             char errStr[20];
 
@@ -1099,9 +1123,8 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 
             clEnqueueReadBuffer(cmd_queues[0][0], ocl_trackingResult, CL_TRUE, 0, sizeof(TrackData) * (computationSize.x * computationSize.y), trackingResult, 0, NULL, NULL);
 
-			// trackKernel(trackingResult, inputVertex[level], inputNormal[level],
-			// 		localimagesize, vertex, normal, computationSize, pose,
-			// 		projectReference, dist_threshold, normal_threshold);
+            endOfKernel = benchmark_tock();
+			timings[6] += endOfKernel - startOfKernel;
 
 			reduceKernel(reductionoutput, trackingResult, computationSize,
 					localimagesize);
