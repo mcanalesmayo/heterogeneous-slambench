@@ -987,6 +987,8 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 	for (unsigned int i = 1; i < iterations.size(); ++i) {
 		halfSampleRobustImageKernel(make_uint2(computationSize.x / (int) pow(2, i - 1),
 						computationSize.y / (int) pow(2, i - 1)), e_delta * 3, 1, i);
+		clError = clEnqueueReadBuffer(cmd_queues[1][0], ocl_ScaledDepth[i], CL_TRUE, 0, (computationSize.x / (int) pow(2, i)) * (computationSize.y / (int) pow(2, i)) * sizeof(float), ScaledDepth[i], 0, NULL, NULL);
+		checkErr(clError, "clEnqueueReadBuffer");
 	}
 
 	endOfKernel = benchmark_tock();
