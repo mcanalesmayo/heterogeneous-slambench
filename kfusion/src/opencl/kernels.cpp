@@ -43,6 +43,23 @@
 
 #endif
 
+inline double benchmark_tock() {
+	synchroniseDevices();
+#ifdef __APPLE__
+	clock_serv_t cclock;
+	mach_timespec_t clockData;
+	host_get_clock_service(mach_host_self(), SYSTEM_CLOCK, &cclock);
+	clock_get_time(cclock, &clockData);
+	mach_port_deallocate(mach_task_self(), cclock);
+#else
+	struct timespec clockData;
+	clock_gettime(CLOCK_MONOTONIC, &clockData);
+#endif
+	return (double) clockData.tv_sec + clockData.tv_nsec / 1000000000.0;
+}
+
+double startOfKernel, endOfKernel;
+
 cl_kernel halfSampleRobustImage_ocl_kernel;
 
 cl_mem * ocl_ScaledDepth = NULL;
@@ -958,6 +975,8 @@ bool Kfusion::preprocessing(const ushort * inputDepth, const uint2 inputSize) {
 bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 		uint frame) {
 
+	startOfKernel = benchmark_tock();
+
 	if (frame % tracking_rate != 0)
 		return false;
 
@@ -969,7 +988,14 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 	for (unsigned int i = 1; i < iterations.size(); ++i) {
 		halfSampleRobustImageKernel(make_uint2(computationSize.x / (int) pow(2, i - 1),
 						computationSize.y / (int) pow(2, i - 1)), e_delta * 3, 1, i);
+		printf("bytes: %d\n", (computationSize.x / (int) pow(2, i - 1)) * (computationSize.y / (int) pow(2, i - 1)) * sizeof(float));
+		clError = clEnqueueReadBuffer(cmd_queues[0][0], ocl_ScaledDepth[i], CL_TRUE, 0, (computationSize.x / (int) pow(2, i - 1)) * (computationSize.y / (int) pow(2, i - 1)) * sizeof(float), &ScaledDepth[i][0], 0, NULL, NULL);
+		printf("clError: %d\n", clError);
+		checkErr(clError, "clEnqueueWriteBuffer");
 	}
+
+	endOfKernel = benchmark_tock();
+	timings[3] = endOfKernel - startOfKernel;
 
 	// prepare the 3D information from the input depth maps
 	uint2 localimagesize = computationSize;
