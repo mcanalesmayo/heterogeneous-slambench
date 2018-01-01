@@ -43,6 +43,23 @@
 
 #endif
 
+inline double benchmark_tock() {
+	synchroniseDevices();
+#ifdef __APPLE__
+	clock_serv_t cclock;
+	mach_timespec_t clockData;
+	host_get_clock_service(mach_host_self(), SYSTEM_CLOCK, &cclock);
+	clock_get_time(cclock, &clockData);
+	mach_port_deallocate(mach_task_self(), cclock);
+#else
+	struct timespec clockData;
+	clock_gettime(CLOCK_MONOTONIC, &clockData);
+#endif
+	return (double) clockData.tv_sec + clockData.tv_nsec / 1000000000.0;
+}
+
+double startOfKernel, endOfKernel;
+
 cl_kernel depth2vertex_ocl_kernel;
 
 cl_mem * ocl_ScaledDepth = NULL;
@@ -995,24 +1012,32 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
     clError = clEnqueueWriteBuffer(cmd_queues[0][0], ocl_ScaledDepth[0], CL_TRUE, 0, computationSize.x * computationSize.y * sizeof(float), &ScaledDepth[0][0], 0, NULL, NULL);
     checkErr(clError, "clEnqueueWriteBuffer");
 
+    timings[4] = 0.0f;
+
 	// half sample the input depth maps into the pyramid levels
 	for (unsigned int i = 1; i < iterations.size(); ++i) {
 		halfSampleRobustImageKernel(ScaledDepth[i], ScaledDepth[i - 1],
 				make_uint2(computationSize.x / (int) pow(2, i - 1),
 						computationSize.y / (int) pow(2, i - 1)), e_delta * 3, 1);
 
+		startOfKernel = benchmark_tock();
         clError = clEnqueueWriteBuffer(cmd_queues[0][0], ocl_ScaledDepth[i], CL_TRUE, 0, sizeof(float) * (computationSize.x * computationSize.y) / (int) pow(2, i), &ScaledDepth[i][0], 0, NULL, NULL);
         checkErr(clError, "clEnqueueWriteBuffer");
+        endOfKernel = benchmark_tock();
+		timings[4] += endOfKernel - startOfKernel;
 	}
 
 	// prepare the 3D information from the input depth maps
 	uint2 localimagesize = computationSize;
 	for (unsigned int i = 0; i < iterations.size(); ++i) {
+		startOfKernel = benchmark_tock();
 		Matrix4 invK = getInverseCameraMatrix(k / float(1 << i));
 		depth2vertexKernel(localimagesize, invK, i);
 
         clError = clEnqueueReadBuffer(cmd_queues[0][0], ocl_inputVertex[i], CL_TRUE, 0, sizeof(float3) * (computationSize.x * computationSize.y) / (int) pow(2, i), &inputVertex[i][0], 0, NULL, NULL);
         checkErr(clError, "clEnqueueWriteBuffer");
+        endOfKernel = benchmark_tock();
+		timings[4] += endOfKernel - startOfKernel;
 
 		vertex2normalKernel(inputNormal[i], inputVertex[i], localimagesize);
 		localimagesize = make_uint2(localimagesize.x / 2, localimagesize.y / 2);
