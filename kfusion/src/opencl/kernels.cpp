@@ -43,6 +43,23 @@
 
 #endif
 
+inline double benchmark_tock() {
+	synchroniseDevices();
+#ifdef __APPLE__
+	clock_serv_t cclock;
+	mach_timespec_t clockData;
+	host_get_clock_service(mach_host_self(), SYSTEM_CLOCK, &cclock);
+	clock_get_time(cclock, &clockData);
+	mach_port_deallocate(mach_task_self(), cclock);
+#else
+	struct timespec clockData;
+	clock_gettime(CLOCK_MONOTONIC, &clockData);
+#endif
+	return (double) clockData.tv_sec + clockData.tv_nsec / 1000000000.0;
+}
+
+double startOfKernel, endOfKernel;
+
 cl_kernel bilateralFilter_ocl_kernel;
 
 cl_mem ocl_FloatDepth = NULL;
@@ -960,7 +977,10 @@ void renderVolumeKernel(uchar4* out, const uint2 depthSize, const Volume volume,
 bool Kfusion::preprocessing(const ushort * inputDepth, const uint2 inputSize) {
 
 	mm2metersKernel(floatDepth, computationSize, inputDepth, inputSize);
+	startOfKernel = benchmark_tock();
 	bilateralFilterKernel(ScaledDepth[0], floatDepth, computationSize, gaussian, e_delta, radius);
+	endOfKernel = benchmark_tock();
+	timings[2] = endOfKernel - startOfKernel;
 
 	return true;
 }
