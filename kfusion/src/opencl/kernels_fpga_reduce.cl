@@ -28,8 +28,6 @@ __kernel void reduceKernel (
 	uint batchSize = (JSize.y * JSize.x) / globalSize;
 
 	float sums[32];
-	float * restrict jtj = sums + 7;
-	float * restrict info = sums + 28;
 
 	uint i, k;
 
@@ -42,11 +40,11 @@ __kernel void reduceKernel (
 		const TrackData row = J[threadIdx + i*globalSize];
 		if(row.result < 1) {
 			if (row.result == -4) {
-				info[1] += 1;
+				sums[29] += 1;
 			} else if (row.result == -5) {
-				info[2] += 1;
+				sums[30] += 1;
 			} else if (row.result > -4) {
-				info[3] += 1;
+				sums[31] += 1;
 			}
 		} else {
 			// Error part
@@ -59,35 +57,35 @@ __kernel void reduceKernel (
 				sums[k+1] = mad(row.error, row.J[k], sums[k+1]);
 			}
 
-			jtj[0] = mad(row.J[0], row.J[0], jtj[0]);
-			jtj[1] = mad(row.J[0], row.J[1], jtj[1]);
-			jtj[2] = mad(row.J[0], row.J[2], jtj[2]);
-			jtj[3] = mad(row.J[0], row.J[3], jtj[3]);
-			jtj[4] = mad(row.J[0], row.J[4], jtj[4]);
-			jtj[5] = mad(row.J[0], row.J[5], jtj[5]);
+			sums[7] = mad(row.J[0], row.J[0], sums[7]);
+			sums[8] = mad(row.J[0], row.J[1], sums[8]);
+			sums[9] = mad(row.J[0], row.J[2], sums[9]);
+			sums[10] = mad(row.J[0], row.J[3], sums[10]);
+			sums[11] = mad(row.J[0], row.J[4], sums[11]);
+			sums[12] = mad(row.J[0], row.J[5], sums[12]);
 
-			jtj[6] = mad(row.J[1], row.J[1], jtj[6]);
-			jtj[7] = mad(row.J[1], row.J[2], jtj[7]);
-			jtj[8] = mad(row.J[1], row.J[3], jtj[8]);
-			jtj[9] = mad(row.J[1], row.J[4], jtj[9]);
-			jtj[10] = mad(row.J[1], row.J[5], jtj[10]);
+			sums[13] = mad(row.J[1], row.J[1], sums[13]);
+			sums[14] = mad(row.J[1], row.J[2], sums[14]);
+			sums[15] = mad(row.J[1], row.J[3], sums[15]);
+			sums[16] = mad(row.J[1], row.J[4], sums[16]);
+			sums[17] = mad(row.J[1], row.J[5], sums[17]);
 
-			jtj[11] = mad(row.J[2], row.J[2], jtj[11]);
-			jtj[12] = mad(row.J[2], row.J[3], jtj[12]);
-			jtj[13] = mad(row.J[2], row.J[4], jtj[13]);
-			jtj[14] = mad(row.J[2], row.J[5], jtj[14]);
+			sums[18] = mad(row.J[2], row.J[2], sums[18]);
+			sums[19] = mad(row.J[2], row.J[3], sums[19]);
+			sums[20] = mad(row.J[2], row.J[4], sums[20]);
+			sums[21] = mad(row.J[2], row.J[5], sums[21]);
 
-			jtj[15] = mad(row.J[3], row.J[3], jtj[15]);
-			jtj[16] = mad(row.J[3], row.J[4], jtj[16]);
-			jtj[17] = mad(row.J[3], row.J[5], jtj[17]);
+			sums[22] = mad(row.J[3], row.J[3], sums[22]);
+			sums[23] = mad(row.J[3], row.J[4], sums[23]);
+			sums[24] = mad(row.J[3], row.J[5], sums[24]);
 
-			jtj[18] = mad(row.J[4], row.J[4], jtj[18]);
-			jtj[19] = mad(row.J[4], row.J[5], jtj[19]);
+			sums[25] = mad(row.J[4], row.J[4], sums[25]);
+			sums[26] = mad(row.J[4], row.J[5], sums[26]);
 
-			jtj[20] = mad(row.J[5], row.J[5], jtj[20]);
+			sums[27] = mad(row.J[5], row.J[5], sums[27]);
 			
 			// extra info here
-			info[0] += 1;
+			sums[28] += 1;
 		}
 	}
 
