@@ -20,8 +20,8 @@ typedef struct sTrackData {
 __attribute__((num_simd_work_items(4)))
 __attribute__((reqd_work_group_size(64,1,1)))
 __kernel void reduceKernel (
-		__global float * out,
-		__global const TrackData * J,
+		__global __write_only float * out,
+		__global __read_only const TrackData * J,
 		const uint2 JSize,
 		const uint2 size,
 		__local float * S
