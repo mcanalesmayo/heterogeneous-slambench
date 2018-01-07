@@ -44,6 +44,25 @@
 
 #endif
 
+inline double benchmark_tock() {
+	synchroniseDevices();
+#ifdef __APPLE__
+	clock_serv_t cclock;
+	mach_timespec_t clockData;
+	host_get_clock_service(mach_host_self(), SYSTEM_CLOCK, &cclock);
+	clock_get_time(cclock, &clockData);
+	mach_port_deallocate(mach_task_self(), cclock);
+#else
+	struct timespec clockData;
+	clock_gettime(CLOCK_MONOTONIC, &clockData);
+#endif
+	return (double) clockData.tv_sec + clockData.tv_nsec / 1000000000.0;
+}
+
+double startOfKernel, endOfKernel;
+
+bool updatePoseKernelRes;
+
 cl_kernel reduce_ocl_kernel;
 
 cl_mem ocl_reduce_output_buffer_out = NULL;
@@ -1013,7 +1032,7 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 					localimagesize, vertex, normal, computationSize, pose,
 					projectReference, dist_threshold, normal_threshold);
 
-
+			startOfKernel = benchmark_tock();
 
 			for (int x=0; x<computationSize.x; x++) {
 				for (int y=0; y<computationSize.y; y++) {
@@ -1055,29 +1074,19 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 			clError = clEnqueueReadBuffer(cmd_queues[0][0], ocl_reduce_output_buffer_outJTe, CL_TRUE, 0, 6 * sizeof(float), &reductionoutput[1], 0, NULL, NULL);
 			checkErr(clError, "clEnqueueReadBuffer");
 
-			//printf("reductionoutput[%d] = FIXEDTOFLOAT(reductionoutputFixedPoint[%d])\n", 0, 0);
-			//printf("read 6 floats into &reductionoutput[1]\n");
 			reductionoutput[0] = FIXED2FLOAT(reductionoutputFixedPoint[0], FRACT_BITS_ERROR);
 			for(int idx=1; idx<22; idx++) {
-				//printf("reductionoutput[%d] = FIXEDTOFLOAT(reductionoutputFixedPoint[%d])\n", idx+7, idx);
 				reductionoutput[idx+6] = FIXED2FLOAT(reductionoutputFixedPoint[idx], FRACT_BITS_J);
 			}
 			for(int idx=22; idx<26; idx++) {
-				//printf("reductionoutput[%d] = (float) reductionoutputFixedPoint[%d]\n", idx+7, idx);
 				reductionoutput[idx+6] = (float) reductionoutputFixedPoint[idx];
 			}
 
-			/*TooN::Matrix<TooN::Dynamic, TooN::Dynamic, float, TooN::Reference::RowMajor> values(reductionoutput, 4, 32);
+			updatePoseKernelRes = updatePoseKernel(pose, reductionoutput, icp_threshold);
+			endOfKernel = benchmark_tock();
+			timings[7] += endOfKernel - startOfKernel;
 
-			for (int j = 1; j < 4; ++j) {
-				values[0] += values[j];
-			}
-
-			reduceKernel(reductionoutput, trackingResult, computationSize,
-					localimagesize);*/
-
-			if (updatePoseKernel(pose, reductionoutput, icp_threshold))
-				break;
+			if (updatePoseKernelRes) break;
 
 		}
 	}
