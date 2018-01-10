@@ -303,7 +303,8 @@ struct Volume {
 	void init(uint3 s, float3 d) {
 		size = s;
 		dim = d;
-		data = (short2 *) malloc(size.x * size.y * size.z * sizeof(short2));
+		//data = (short2 *) malloc(size.x * size.y * size.z * sizeof(short2));
+		posix_memalign((void **) &data, 64, size.x * size.y * size.z * sizeof(short2));
 		assert(data != NULL);
 
 	}

@@ -136,8 +136,12 @@ void Kfusion::languageSpecificConstructor() {
 						/ (int) pow(2, i), 1);
 	}
 
-	floatDepth = (float*) calloc(
-			sizeof(float) * computationSize.x * computationSize.y, 1);
+	//floatDepth = (float*) calloc(sizeof(float) * computationSize.x * computationSize.y, 1);
+	posix_memalign((void **) &floatDepth, 64, sizeof(float) * computationSize.x * computationSize.y);
+	for(unsigned int i=0; i<computationSize.x*computationSize.y; i++) {
+		floatDepth[i] = 0.0f;
+	}
+
 	vertex = (float3*) calloc(
 			sizeof(float3) * computationSize.x * computationSize.y, 1);
 	normal = (float3*) calloc(
@@ -1082,19 +1086,20 @@ bool Kfusion::raycasting(float4 k, float mu, uint frame) {
 bool Kfusion::integration(float4 k, uint integration_rate, float mu,
 		uint frame) {
 
+	startOfKernel = benchmark_tock();
 	bool doIntegrate = checkPoseKernel(pose, oldPose, reductionoutput,
 			computationSize, track_threshold);
 
 	if ((doIntegrate && ((frame % integration_rate) == 0)) || (frame <= 3)) {
-		startOfKernel = benchmark_tock();
 		integrateKernel(volume, floatDepth, computationSize, inverse(pose),
 				getCameraMatrix(k), mu, maxweight, computationSize);
-		endOfKernel = benchmark_tock();
-		timings[8] = endOfKernel - startOfKernel;
 		doIntegrate = true;
 	} else {
 		doIntegrate = false;
 	}
+
+	endOfKernel = benchmark_tock();
+	timings[8] = endOfKernel - startOfKernel;
 
 	return doIntegrate;
 
