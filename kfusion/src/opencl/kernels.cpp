@@ -44,7 +44,7 @@
 
 #endif
 
-#define NUM_THREADS_REDUCE_KERNEL 800
+#define NUM_THREADS_REDUCE_KERNEL 600
 
 inline double benchmark_tock() {
 	synchroniseDevices();
