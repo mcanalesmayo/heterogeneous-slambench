@@ -1025,6 +1025,8 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 		localimagesize = make_uint2(localimagesize.x / 2, localimagesize.y / 2);
 	}
 
+	timings[7] = 0.0f;
+
 	oldPose = pose;
 	const Matrix4 projectReference = getCameraMatrix(k) * inverse(raycastPose);
 
@@ -1051,7 +1053,7 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 				}
 			}
 			clEnqueueWriteBuffer(cmd_queues[0][0], ocl_trackingResult, CL_TRUE, 0, sizeof(TrackDataFixedPoint) * (computationSize.x * computationSize.y), trackingResultFixedPoint, 0, NULL, NULL);
-			checkErr(clError, "clEnqueueReadBuffer");
+			checkErr(clError, "clEnqueueWriteBuffer");
 
 			int arg = 0;
 			char errStr[20];
