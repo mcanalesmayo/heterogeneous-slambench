@@ -1023,11 +1023,14 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 		localimagesize = make_uint2(localimagesize.x / 2, localimagesize.y / 2);
 	}
 
-	oldPose = pose;
-	const Matrix4 projectReference = getCameraMatrix(k) * inverse(raycastPose);
-
 	timings[6] = 0.0f;
 	timings[7] = 0.0f;
+
+	startOfKernel = benchmark_tock();
+	oldPose = pose;
+	const Matrix4 projectReference = getCameraMatrix(k) * inverse(raycastPose);
+	endOfKernel = benchmark_tock();
+	timings[6] += endOfKernel - startOfKernel;
 
 	for (int level = iterations.size() - 1; level >= 0; --level) {
 		uint2 localimagesize = make_uint2(
@@ -1037,6 +1040,8 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 			int arg = 0;
             char errStr[20];
 
+
+            startOfKernel = benchmark_tock();
             clError = clEnqueueWriteBuffer(cmd_queues[0][0], ocl_inputVertex[level], CL_TRUE, 0, sizeof(float3) * (computationSize.x * computationSize.y) / (int) pow(2, level), inputVertex[level], 0, NULL, NULL);
             checkErr(clError, "clEnqueueWriteBuffer");
             clError = clEnqueueWriteBuffer(cmd_queues[0][0], ocl_inputNormal[level], CL_TRUE, 0, sizeof(float3) * (computationSize.x * computationSize.y) / (int) pow(2, level), inputNormal[level], 0, NULL, NULL);
