@@ -16,8 +16,12 @@
 #define XSTR(x) #x
 #define STR(x) XSTR(x)
 
-#ifndef AOCX_PATH
-#define AOCX_PATH "/home/mcanales/heterogeneous-slambench/kfusion/src/opencl/kernels_fpga_reduce_16.1"
+#ifndef AOCX_TRACK_PATH
+#define AOCX_TRACK_PATH "/home/mcanales/heterogeneous-slambench/kfusion/src/opencl/kernels_fpga_track_16.1"
+#endif
+
+#ifndef AOCX_REDUCE_PATH
+#define AOCX_REDUCE_PATH "/home/mcanales/heterogeneous-slambench/kfusion/src/opencl/kernels_fpga_reduce_16.1"
 #endif
 
 cl_int             clError;
@@ -34,7 +38,7 @@ int opencl_clean(void) {
 
     // release resources
     clError &= clReleaseProgram(programs[0]);
-    //clError &= clReleaseProgram(programs[1]);
+    clError &= clReleaseProgram(programs[1]);
     clError &= clReleaseCommandQueue(cmd_queues[0][0]);
     //clError &= clReleaseCommandQueue(cmd_queues[1][0]);
     //clError &= clReleaseCommandQueue(cmd_queues[1][1]);
@@ -137,12 +141,20 @@ int opencl_init(void) {
     }
 
     // create and build the FPGA program
-    std::string binary_file = aocl_utils::getBoardBinaryFile(AOCX_PATH, device_lists[0][0]);
+    std::string binary_file = aocl_utils::getBoardBinaryFile(AOCX_TRACK_PATH, device_lists[0][0]);
     printf("Using AOCX: %s\n", binary_file.c_str());
     programs[0] = aocl_utils::createProgramFromBinary(contexts[0], binary_file.c_str(), device_lists[0], 1);
     const char * buildOpts = "-cl-fast-relaxed-math";
-    //const char * buildOpts = NULL;
     clError = clBuildProgram(programs[0], 0, NULL, buildOpts, NULL, NULL);
+    if (clError != CL_SUCCESS) {
+        printf("ERROR: FPGA clBuildProgram() => %d\n", clError);
+        return -1;
+    }
+
+    binary_file = aocl_utils::getBoardBinaryFile(AOCX_REDUCE_PATH, device_lists[0][0]);
+    printf("Using AOCX: %s\n", binary_file.c_str());
+    programs[1] = aocl_utils::createProgramFromBinary(contexts[0], binary_file.c_str(), device_lists[0], 1);
+    clError = clBuildProgram(programs[1], 0, NULL, buildOpts, NULL, NULL);
     if (clError != CL_SUCCESS) {
         printf("ERROR: FPGA clBuildProgram() => %d\n", clError);
         return -1;
