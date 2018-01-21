@@ -11,6 +11,8 @@
 
 /************** TYPES ***************/
 
+#include "track_utils.h"
+
 #define INVALID -2
 
 typedef struct sTrackData {
@@ -51,80 +53,191 @@ inline float3 myrotate(const float4 M0, const float4 M1, const float4 M2, const 
             dot((float3)(M.data[2].x, M.data[2].y, M.data[2].z), v));
 }
 
-// inVertex iterate
-__kernel void trackKernel (
-        __global TrackData * output,
-        const uint2 outputSize,
-        __global const float * inVertex,// float3
-        const uint2 inVertexSize,
-        __global const float * inNormal,// float3
-        const uint2 inNormalSize,
-        __global const float * refVertex,// float3
-        const uint2 refVertexSize,
-        __global const float * refNormal,// float3
-        const uint2 refNormalSize,
+__attribute__((reqd_work_group_size(X_LEVEL_TRACK_1,Y_LEVEL_TRACK_1,1)))
+__kernel void trackKernel1 (
+        __global __write_only TrackData * restrict output,
+        __global __read_only const float * restrict inVertex,// float3
+        __global __read_only const float * restrict inNormal,// float3
+        __global __read_only const float * restrict refVertex,// float3
+        __global __read_only const float * restrict refNormal,// float3
         const float4 Ttrack0, const float4 Ttrack1, const float4 Ttrack2, const float4 Ttrack3,
         const float4 view0, const float4 view1, const float4 view2, const float4 view3,
         const float dist_threshold,
         const float normal_threshold
 ) {
-    Matrix4 Ttrack;
-    Ttrack.data[0] = Ttrack0;
-    Ttrack.data[1] = Ttrack1;
-    Ttrack.data[2] = Ttrack2;
-    Ttrack.data[3] = Ttrack3;
+    const size_t pixelX = get_global_id(0);
+    const size_t pixelY = get_global_id(1);
 
-    Matrix4 view;
-    view.data[0] = view0;
-    view.data[1] = view1;
-    view.data[2] = view2;
-    view.data[3] = view3;
-
-    const uint2 pixel = (uint2)(get_global_id(0),get_global_id(1));
-
-    if(pixel.x >= inVertexSize.x || pixel.y >= inVertexSize.y ) {return;}
-
-    float3 inNormalPixel = vload3(pixel.x + inNormalSize.x * pixel.y,inNormal);
-
-    if(inNormalPixel.x == INVALID ) {
-        output[pixel.x + outputSize.x * pixel.y].result = -1;
+    if(pixelX >= X_LEVEL_TRACK_1 || pixelY >= Y_LEVEL_TRACK_1 ) {
         return;
     }
 
-    float3 inVertexPixel = vload3(pixel.x + inVertexSize.x * pixel.y,inVertex);
-    const float3 projectedVertex = Mat4TimeFloat3 (Ttrack.data[0], Ttrack.data[1], Ttrack.data[2], Ttrack.data[3], inVertexPixel);
-    const float3 projectedPos = Mat4TimeFloat3 (view.data[0], view.data[1], view.data[2], view.data[3], projectedVertex);
-    const float2 projPixel = (float2) ( projectedPos.x / projectedPos.z + 0.5f, projectedPos.y / projectedPos.z + 0.5f);
+    float3 inNormalPixel = vload3(pixelX + X_LEVEL_TRACK_1 * pixelY, inNormal);
 
-    if(projPixel.x < 0 || projPixel.x > refVertexSize.x-1 || projPixel.y < 0 || projPixel.y > refVertexSize.y-1 ) {
-        output[pixel.x + outputSize.x * pixel.y].result = -2;
+    if(inNormalPixel.x == INVALID ) {
+        output[pixelX + X_COMPUTATION_SIZE * pixelY].result = -1;
+        return;
+    }
+
+    float3 inVertexPixel = vload3(pixelX + X_LEVEL_TRACK_1 * pixelY, inVertex);
+    const float3 projectedVertex = Mat4TimeFloat3(Ttrack0, Ttrack1, Ttrack2, Ttrack3, inVertexPixel);
+    const float3 projectedPos = Mat4TimeFloat3(view0, view1, view2, view3, projectedVertex);
+    const float2 projPixel = (float2) (projectedPos.x / projectedPos.z + 0.5f, projectedPos.y / projectedPos.z + 0.5f);
+
+    if(projPixel.x < 0 || projPixel.x > X_COMPUTATION_SIZE-1 || projPixel.y < 0 || projPixel.y > Y_COMPUTATION_SIZE-1 ) {
+        output[pixelX + X_COMPUTATION_SIZE * pixelY].result = -2;
         return;
     }
 
     const uint2 refPixel = (uint2) (projPixel.x, projPixel.y);
-    const float3 referenceNormal = vload3(refPixel.x + refNormalSize.x * refPixel.y,refNormal);
+    const float3 referenceNormal = vload3(refPixel.x + X_COMPUTATION_SIZE * refPixel.y, refNormal);
 
     if(referenceNormal.x == INVALID) {
-        output[pixel.x + outputSize.x * pixel.y].result = -3;
+        output[pixelX + X_COMPUTATION_SIZE * pixelY].result = -3;
         return;
     }
 
-    const float3 diff = vload3(refPixel.x + refVertexSize.x * refPixel.y,refVertex) - projectedVertex;
-    const float3 projectedNormal = myrotate(Ttrack.data[0], Ttrack.data[1], Ttrack.data[2], Ttrack.data[3], inNormalPixel);
+    const float3 diff = vload3(refPixel.x + X_COMPUTATION_SIZE * refPixel.y, refVertex) - projectedVertex;
+    const float3 projectedNormal = myrotate(Ttrack0, Ttrack1, Ttrack2, Ttrack3, inNormalPixel);
 
     if(length(diff) > dist_threshold ) {
-        output[pixel.x + outputSize.x * pixel.y].result = -4;
+        output[pixelX + X_COMPUTATION_SIZE * pixelY].result = -4;
         return;
     }
     if(dot(projectedNormal, referenceNormal) < normal_threshold) {
-        output[pixel.x + outputSize.x * pixel.y] .result = -5;
+        output[pixelX + X_COMPUTATION_SIZE * pixelY] .result = -5;
         return;
     }
 
-    output[pixel.x + outputSize.x * pixel.y].result = 1;
-    output[pixel.x + outputSize.x * pixel.y].error = dot(referenceNormal, diff);
+    output[pixelX + X_COMPUTATION_SIZE * pixelY].result = 1;
+    output[pixelX + X_COMPUTATION_SIZE * pixelY].error = dot(referenceNormal, diff);
 
-    vstore3(referenceNormal,0,(output[pixel.x + outputSize.x * pixel.y].J));
-    vstore3(cross(projectedVertex, referenceNormal),1,(output[pixel.x + outputSize.x * pixel.y].J));
+    vstore3(referenceNormal, 0, (output[pixelX + X_COMPUTATION_SIZE * pixelY].J));
+    vstore3(cross(projectedVertex, referenceNormal), 1, (output[pixelX + X_COMPUTATION_SIZE * pixelY].J));
+}
 
+__attribute__((reqd_work_group_size(X_LEVEL_TRACK_2,Y_LEVEL_TRACK_2,1)))
+__kernel void trackKernel2 (
+        __global __write_only TrackData * restrict output,
+        __global __read_only const float * restrict inVertex,// float3
+        __global __read_only const float * restrict inNormal,// float3
+        __global __read_only const float * restrict refVertex,// float3
+        __global __read_only const float * restrict refNormal,// float3
+        const float4 Ttrack0, const float4 Ttrack1, const float4 Ttrack2, const float4 Ttrack3,
+        const float4 view0, const float4 view1, const float4 view2, const float4 view3,
+        const float dist_threshold,
+        const float normal_threshold
+) {
+    const size_t pixelX = get_global_id(0);
+    const size_t pixelY = get_global_id(1);
+
+    if(pixelX >= X_LEVEL_TRACK_2 || pixelY >= Y_LEVEL_TRACK_2 ) {
+        return;
+    }
+
+    float3 inNormalPixel = vload3(pixelX + X_LEVEL_TRACK_2 * pixelY, inNormal);
+
+    if(inNormalPixel.x == INVALID ) {
+        output[pixelX + X_COMPUTATION_SIZE * pixelY].result = -1;
+        return;
+    }
+
+    float3 inVertexPixel = vload3(pixelX + X_LEVEL_TRACK_2 * pixelY, inVertex);
+    const float3 projectedVertex = Mat4TimeFloat3(Ttrack0, Ttrack1, Ttrack2, Ttrack3, inVertexPixel);
+    const float3 projectedPos = Mat4TimeFloat3(view0, view1, view2, view3, projectedVertex);
+    const float2 projPixel = (float2) (projectedPos.x / projectedPos.z + 0.5f, projectedPos.y / projectedPos.z + 0.5f);
+
+    if(projPixel.x < 0 || projPixel.x > X_COMPUTATION_SIZE-1 || projPixel.y < 0 || projPixel.y > Y_COMPUTATION_SIZE-1 ) {
+        output[pixelX + X_COMPUTATION_SIZE * pixelY].result = -2;
+        return;
+    }
+
+    const uint2 refPixel = (uint2) (projPixel.x, projPixel.y);
+    const float3 referenceNormal = vload3(refPixel.x + X_COMPUTATION_SIZE * refPixel.y, refNormal);
+
+    if(referenceNormal.x == INVALID) {
+        output[pixelX + X_COMPUTATION_SIZE * pixelY].result = -3;
+        return;
+    }
+
+    const float3 diff = vload3(refPixel.x + X_COMPUTATION_SIZE * refPixel.y, refVertex) - projectedVertex;
+    const float3 projectedNormal = myrotate(Ttrack0, Ttrack1, Ttrack2, Ttrack3, inNormalPixel);
+
+    if(length(diff) > dist_threshold ) {
+        output[pixelX + X_COMPUTATION_SIZE * pixelY].result = -4;
+        return;
+    }
+    if(dot(projectedNormal, referenceNormal) < normal_threshold) {
+        output[pixelX + X_COMPUTATION_SIZE * pixelY] .result = -5;
+        return;
+    }
+
+    output[pixelX + X_COMPUTATION_SIZE * pixelY].result = 1;
+    output[pixelX + X_COMPUTATION_SIZE * pixelY].error = dot(referenceNormal, diff);
+
+    vstore3(referenceNormal, 0, (output[pixelX + X_COMPUTATION_SIZE * pixelY].J));
+    vstore3(cross(projectedVertex, referenceNormal), 1, (output[pixelX + X_COMPUTATION_SIZE * pixelY].J));
+}
+
+__attribute__((reqd_work_group_size(X_LEVEL_TRACK_3,Y_LEVEL_TRACK_3,1)))
+__kernel void trackKernel3 (
+        __global __write_only TrackData * restrict output,
+        __global __read_only const float * restrict inVertex,// float3
+        __global __read_only const float * restrict inNormal,// float3
+        __global __read_only const float * restrict refVertex,// float3
+        __global __read_only const float * restrict refNormal,// float3
+        const float4 Ttrack0, const float4 Ttrack1, const float4 Ttrack2, const float4 Ttrack3,
+        const float4 view0, const float4 view1, const float4 view2, const float4 view3,
+        const float dist_threshold,
+        const float normal_threshold
+) {
+    const size_t pixelX = get_global_id(0);
+    const size_t pixelY = get_global_id(1);
+
+    if(pixelX >= X_LEVEL_TRACK_3 || pixelY >= Y_LEVEL_TRACK_3 ) {
+        return;
+    }
+
+    float3 inNormalPixel = vload3(pixelX + X_LEVEL_TRACK_3 * pixelY, inNormal);
+
+    if(inNormalPixel.x == INVALID ) {
+        output[pixelX + X_COMPUTATION_SIZE * pixelY].result = -1;
+        return;
+    }
+
+    float3 inVertexPixel = vload3(pixelX + X_LEVEL_TRACK_3 * pixelY, inVertex);
+    const float3 projectedVertex = Mat4TimeFloat3(Ttrack0, Ttrack1, Ttrack2, Ttrack3, inVertexPixel);
+    const float3 projectedPos = Mat4TimeFloat3(view0, view1, view2, view3, projectedVertex);
+    const float2 projPixel = (float2) (projectedPos.x / projectedPos.z + 0.5f, projectedPos.y / projectedPos.z + 0.5f);
+
+    if(projPixel.x < 0 || projPixel.x > X_COMPUTATION_SIZE-1 || projPixel.y < 0 || projPixel.y > Y_COMPUTATION_SIZE-1 ) {
+        output[pixelX + X_COMPUTATION_SIZE * pixelY].result = -2;
+        return;
+    }
+
+    const uint2 refPixel = (uint2) (projPixel.x, projPixel.y);
+    const float3 referenceNormal = vload3(refPixel.x + X_COMPUTATION_SIZE * refPixel.y, refNormal);
+
+    if(referenceNormal.x == INVALID) {
+        output[pixelX + X_COMPUTATION_SIZE * pixelY].result = -3;
+        return;
+    }
+
+    const float3 diff = vload3(refPixel.x + X_COMPUTATION_SIZE * refPixel.y, refVertex) - projectedVertex;
+    const float3 projectedNormal = myrotate(Ttrack0, Ttrack1, Ttrack2, Ttrack3, inNormalPixel);
+
+    if(length(diff) > dist_threshold ) {
+        output[pixelX + X_COMPUTATION_SIZE * pixelY].result = -4;
+        return;
+    }
+    if(dot(projectedNormal, referenceNormal) < normal_threshold) {
+        output[pixelX + X_COMPUTATION_SIZE * pixelY] .result = -5;
+        return;
+    }
+
+    output[pixelX + X_COMPUTATION_SIZE * pixelY].result = 1;
+    output[pixelX + X_COMPUTATION_SIZE * pixelY].error = dot(referenceNormal, diff);
+
+    vstore3(referenceNormal, 0, (output[pixelX + X_COMPUTATION_SIZE * pixelY].J));
+    vstore3(cross(projectedVertex, referenceNormal), 1, (output[pixelX + X_COMPUTATION_SIZE * pixelY].J));
 }
