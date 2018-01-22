@@ -136,29 +136,63 @@ void Kfusion::languageSpecificConstructor() {
 	reductionoutput = (float*) calloc(sizeof(float) * 8 * 32, 1);
 
 	ScaledDepth = (float**) calloc(sizeof(float*) * iterations.size(), 1);
-	inputVertex = (float3**) calloc(sizeof(float3*) * iterations.size(), 1);
-	inputNormal = (float3**) calloc(sizeof(float3*) * iterations.size(), 1);
+	//inputVertex = (float3**) calloc(sizeof(float3*) * iterations.size(), 1);
+	posix_memalign((void **) &inputVertex, 64, sizeof(float3*) * iterations.size());
+	//inputNormal = (float3**) calloc(sizeof(float3*) * iterations.size(), 1);
+	posix_memalign((void **) &inputNormal, 64, sizeof(float3*) * iterations.size());
 
 	for (unsigned int i = 0; i < iterations.size(); ++i) {
 		ScaledDepth[i] = (float*) calloc(
 				sizeof(float) * (computationSize.x * computationSize.y)
 						/ (int) pow(2, i), 1);
-		inputVertex[i] = (float3*) calloc(
-				sizeof(float3) * (computationSize.x * computationSize.y)
-						/ (int) pow(2, i), 1);
-		inputNormal[i] = (float3*) calloc(
-				sizeof(float3) * (computationSize.x * computationSize.y)
-						/ (int) pow(2, i), 1);
+		// inputVertex[i] = (float3*) calloc(
+		// 		sizeof(float3) * (computationSize.x * computationSize.y)
+		// 				/ (int) pow(2, i), 1);
+		posix_memalign((void **) &inputVertex[i], 64, sizeof(float3) * (computationSize.x * computationSize.y) / (int) pow(2, i));
+		for (unsigned int j=0; j<(computationSize.x * computationSize.y) / (int) pow(2, i); j++) {
+			inputVertex[i][j].x = 0.0f;
+			inputVertex[i][j].y = 0.0f;
+			inputVertex[i][j].z = 0.0f;
+		}
+		// inputNormal[i] = (float3*) calloc(
+		// 		sizeof(float3) * (computationSize.x * computationSize.y)
+		// 				/ (int) pow(2, i), 1);
+		posix_memalign((void **) &inputNormal[i], 64, sizeof(float3) * (computationSize.x * computationSize.y) / (int) pow(2, i));
+		for (unsigned int j=0; j<(computationSize.x * computationSize.y) / (int) pow(2, i); j++) {
+			inputNormal[i][j].x = 0.0f;
+			inputNormal[i][j].y = 0.0f;
+			inputNormal[i][j].z = 0.0f;
+		}
 	}
 
 	floatDepth = (float*) calloc(
 			sizeof(float) * computationSize.x * computationSize.y, 1);
-	vertex = (float3*) calloc(
-			sizeof(float3) * computationSize.x * computationSize.y, 1);
-	normal = (float3*) calloc(
-			sizeof(float3) * computationSize.x * computationSize.y, 1);
-	trackingResult = (TrackData*) calloc(
-			sizeof(TrackData) * computationSize.x * computationSize.y, 1);
+	// vertex = (float3*) calloc(
+	// 		sizeof(float3) * computationSize.x * computationSize.y, 1);
+	posix_memalign((void **) &vertex, 64, sizeof(float3) * computationSize.x * computationSize.y);
+	for (unsigned int i=0; i<computationSize.x * computationSize.y; i++) {
+		vertex[i].x = 0.0f;
+		vertex[i].y = 0.0f;
+		vertex[i].z = 0.0f;
+	}
+	// normal = (float3*) calloc(
+	// 		sizeof(float3) * computationSize.x * computationSize.y, 1);
+	posix_memalign((void **) &normal, 64, sizeof(float3) * computationSize.x * computationSize.y);
+	for (unsigned int i=0; i<computationSize.x * computationSize.y; i++) {
+		normal[i].x = 0.0f;
+		normal[i].y = 0.0f;
+		normal[i].z = 0.0f;
+	}
+	// trackingResult = (TrackData*) calloc(
+	// 		sizeof(TrackData) * computationSize.x * computationSize.y, 1);
+	posix_memalign((void **) &trackingResult, 64, sizeof(TrackData) * computationSize.x * computationSize.y);
+	for (unsigned int i=0; i<computationSize.x * computationSize.y; i++) {
+		trackingResult[i].result = 0;
+		trackingResult[i].error = 0.0f;
+		for (unsigned j=0; j<6; j++) {
+			trackingResult[i].J[j] = 0.0f;
+		}
+	}
 
 	// ********* BEGIN : Generate the gaussian *************
 	size_t gaussianS = radius * 2 + 1;
