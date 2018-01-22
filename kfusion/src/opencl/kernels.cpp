@@ -1085,9 +1085,6 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
             clError = clSetKernelArg(track_ocl_kernel[level], arg++, sizeof(cl_float4), &(pose.data[2]));
             sprintf(errStr, "clSetKernelArg%d", arg);
             checkErr(clError, errStr);
-            clError = clSetKernelArg(track_ocl_kernel[level], arg++, sizeof(cl_float4), &(pose.data[3]));
-            sprintf(errStr, "clSetKernelArg%d", arg);
-            checkErr(clError, errStr);
             clError = clSetKernelArg(track_ocl_kernel[level], arg++, sizeof(cl_float4), &(projectReference.data[0]));
             sprintf(errStr, "clSetKernelArg%d", arg);
             checkErr(clError, errStr);
@@ -1095,9 +1092,6 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
             sprintf(errStr, "clSetKernelArg%d", arg);
             checkErr(clError, errStr);
             clError = clSetKernelArg(track_ocl_kernel[level], arg++, sizeof(cl_float4), &(projectReference.data[2]));
-            sprintf(errStr, "clSetKernelArg%d", arg);
-            checkErr(clError, errStr);
-            clError = clSetKernelArg(track_ocl_kernel[level], arg++, sizeof(cl_float4), &(projectReference.data[3]));
             sprintf(errStr, "clSetKernelArg%d", arg);
             checkErr(clError, errStr);
             clError = clSetKernelArg(track_ocl_kernel[level], arg++, sizeof(cl_float), &dist_threshold);
