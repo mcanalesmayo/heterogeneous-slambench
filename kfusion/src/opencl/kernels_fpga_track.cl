@@ -39,7 +39,7 @@ inline float3 myrotate(const float4 M0, const float4 M1, const float4 M2, const 
             dot((float3)(M2.x, M2.y, M2.z), v));
 }
 
-__attribute__((max_work_group_size(X_LEVEL_TRACK_1,Y_LEVEL_TRACK_1,1)))
+__attribute__((max_work_group_size(SIZE_LEVEL_TRACK_1)))
 __kernel void trackKernel (
         __global __write_only TrackData * restrict output,
         __global __read_only const float * restrict inVertex,// float3
