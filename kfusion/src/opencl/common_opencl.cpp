@@ -17,7 +17,7 @@
 #define STR(x) XSTR(x)
 
 #ifndef AOCX_PATH
-#define AOCX_PATH "/home/mcanales/heterogeneous-slambench/kfusion/src/opencl/kernels_fpga_track_16.1_opt"
+#define AOCX_PATH "/home/mcanales/heterogeneous-slambench/kfusion/src/opencl/kernels_fpga_track_16.1_opt_1kernelLevelCheck"
 #endif
 
 cl_int             clError;
