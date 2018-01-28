@@ -51,7 +51,7 @@ inline std::string pyramid2str(std::vector<int> v) {
 
 }
 
-static std::string short_options = "qc:d:f:i:l:m:k:o:p:r:s:t:v:y:z:a";
+static std::string short_options = "qc:d:f:i:l:m:k:o:p:r:s:t:v:y:z:a:";
 
 static struct option long_options[] =
   {

@@ -54,8 +54,10 @@ int main(int argc, char ** argv) {
 
 	// ========= CHECK ARGS =====================
 
-	std::ostream* logstream_io = &std::cout, logstream_cpu = &std::cout;
-	std::ofstream logfilestream_io, logfilestream_cpu;
+	std::ostream* logstreamIO = &std::cout;
+	std::ostream* logstreamCPU = &std::cout;
+	std::ofstream logfilestreamIO;
+	std::ofstream logfilestreamCPU;
 	assert(config.compute_size_ratio > 0);
 	assert(config.integration_rate > 0);
 	assert(config.volume_size.x > 0);
@@ -68,12 +70,12 @@ int main(int argc, char ** argv) {
 	// }
 
 	if (config.log_file != "") {
-		logfilestream_io.open(config.log_file.c_str());
-		logstream_io = &logfilestream_io;
+		logfilestreamIO.open(config.log_file.c_str());
+		logstreamIO = &logfilestreamIO;
 	}
 	if (config.log_file_cpu != "") {
-		logfilestream_cpu.open(config.log_file_cpu.c_str());
-		logstream_cpu = &logfilestream_cpu;
+		logfilestreamCPU.open(config.log_file_cpu.c_str());
+		logstreamCPU = &logfilestreamCPU;
 	}
 	if (config.input_file == "") {
 		std::cerr << "No input found." << std::endl;
@@ -133,12 +135,12 @@ int main(int argc, char ** argv) {
 	Kfusion kfusion(computationSize, config.volume_resolution,
 			config.volume_size, init_pose, config.pyramid, timingsIO, timingsCPU);
 
-	*logstream_io
+	*logstreamIO
 			<< "frame\tacquisition\tpreprocess_mm2meters\tpreprocess_bilateralFilter\ttrack_halfSample\ttrack_depth2vertex\ttrack_vertex2normal"
 			<< "\ttrack_track\ttrack_reduce\tintegrate\traycast\trenderDepth\trenderTrack\trenderVolume"
 			<< "\tcomputation\ttotal    \tX          \tY          \tZ         \ttracked   \tintegrated"
 			<< std::endl;
-	logstream_io->setf(std::ios::fixed, std::ios::floatfield);
+	logstreamIO->setf(std::ios::fixed, std::ios::floatfield);
 
 	startOfKernel = benchmark_tock();
 	while (reader->readNextDepthFrame(inputDepth)) {
@@ -175,7 +177,7 @@ int main(int argc, char ** argv) {
 
 		overallTotalIO = computationTotalIO + timingsIO[0];
 
-		*logstream_io << frame << "\t" << timingsIO[0] << "\t" //  acquisition
+		*logstreamIO << frame << "\t" << timingsIO[0] << "\t" //  acquisition
 				<< timingsIO[1] << "\t"     //  preprocessing --> mm2meters
 				<< timingsIO[2] << "\t"     //  preprocessing --> bilateralFilter
 				<< timingsIO[3] << "\t"     //  tracking --> halfSample
@@ -202,7 +204,7 @@ int main(int argc, char ** argv) {
 
 		overallTotalCPU = computationTotalCPU + timingsCPU[0];
 
-		*logstream_cpu << frame << "\t" << timingsCPU[0] << "\t" //  acquisition
+		*logstreamCPU << frame << "\t" << timingsCPU[0] << "\t" //  acquisition
 				<< timingsCPU[1] << "\t"     //  preprocessing --> mm2meters
 				<< timingsCPU[2] << "\t"     //  preprocessing --> bilateralFilter
 				<< timingsCPU[3] << "\t"     //  tracking --> halfSample
