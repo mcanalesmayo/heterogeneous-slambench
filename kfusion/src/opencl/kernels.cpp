@@ -58,7 +58,7 @@ inline double benchmark_tock() {
 	return (double) clockData.tv_sec + clockData.tv_nsec / 1000000000.0;
 }
 
-double startOfKernel, endOfKernel;
+double startOfTiming, endOfTiming;
 
 cl_kernel track_ocl_kernel;
 
@@ -1032,20 +1032,21 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 		localimagesize = make_uint2(localimagesize.x / 2, localimagesize.y / 2);
 	}
 
-	timings[6] = 0.0f;
-
-	startOfKernel = benchmark_tock();
+	timingsCPU[6] = 0.0f;
+	startOfTiming = benchmark_tock();
 	oldPose = pose;
 	const Matrix4 projectReference = getCameraMatrix(k) * inverse(raycastPose);
-	endOfKernel = benchmark_tock();
-	timings[6] += endOfKernel - startOfKernel;
+	endOfTiming = benchmark_tock();
+	timingsCPU[6] += endOfTiming - startOfTiming;
+
+	bool checkPoseKernelRes;
 
 	for (int level = iterations.size() - 1; level >= 0; --level) {
 		uint2 localimagesize = make_uint2(
 				computationSize.x / (int) pow(2, level),
 				computationSize.y / (int) pow(2, level));
 		for (int i = 0; i < iterations[level]; ++i) {
-			startOfKernel = benchmark_tock();
+			startOfTiming = benchmark_tock();
 
             int arg = 0;
             char errStr[20];
@@ -1116,15 +1117,18 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
             sprintf(errStr, "clSetKernelArg%d", arg);
             checkErr(clError, errStr);
 
+            endOfTiming = benchmark_tock();
+			timingsIO[6] += endOfTiming - startOfTiming;
+
             size_t globalWorksize[2] = { localimagesize.x, localimagesize.y };
 
             clError = clEnqueueNDRangeKernel(cmd_queues[0][0], track_ocl_kernel, 2, NULL, globalWorksize, NULL, 0, NULL, NULL);
             checkErr(clError, "clEnqueueNDRangeKernel");
 
+            startOfTiming = benchmark_tock();
             clEnqueueReadBuffer(cmd_queues[0][0], ocl_trackingResult, CL_TRUE, 0, sizeof(TrackData) * (computationSize.x * computationSize.y), trackingResult, 0, NULL, NULL);
-
-            endOfKernel = benchmark_tock();
-			timings[6] += endOfKernel - startOfKernel;
+            endOfTiming = benchmark_tock();
+			timingsIO[6] += endOfTiming - startOfTiming;
 
 			reduceKernel(reductionoutput, trackingResult, computationSize,
 					localimagesize);
@@ -1134,8 +1138,13 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 
 		}
 	}
-	return checkPoseKernel(pose, oldPose, reductionoutput, computationSize,
+	timingsCPU[6] = benchmark_tock();
+	checkPoseKernelRes = checkPoseKernel(pose, oldPose, reductionoutput, computationSize,
 			track_threshold);
+	endOfTiming = benchmark_tock();
+	timingsCPU[6] += endOfTiming - endOfTiming;
+
+	return checkPoseKernelRes;
 
 }
 
