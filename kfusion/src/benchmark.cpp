@@ -141,6 +141,12 @@ int main(int argc, char ** argv) {
 			<< "\tcomputation\ttotal    \tX          \tY          \tZ         \ttracked   \tintegrated"
 			<< std::endl;
 	logstreamIO->setf(std::ios::fixed, std::ios::floatfield);
+	*logstreamCPU
+			<< "frame\tacquisition\tpreprocess_mm2meters\tpreprocess_bilateralFilter\ttrack_halfSample\ttrack_depth2vertex\ttrack_vertex2normal"
+			<< "\ttrack_track\ttrack_reduce\tintegrate\traycast\trenderDepth\trenderTrack\trenderVolume"
+			<< "\tcomputation\ttotal    \tX          \tY          \tZ         \ttracked   \tintegrated"
+			<< std::endl;
+	logstreamCPU->setf(std::ios::fixed, std::ios::floatfield);
 
 	startOfKernel = benchmark_tock();
 	while (reader->readNextDepthFrame(inputDepth)) {
