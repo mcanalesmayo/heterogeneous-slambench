@@ -57,7 +57,6 @@ for variable in headers:
 for line in lines[1:]:
     matching = re.match(KFUSION_LOG_REGEX, line)
     if matching:
-        print line
         dropped = int(matching.group(1)) - lastFrame - 1
         if dropped > 0:
             framesDropped = framesDropped + dropped
@@ -203,7 +202,6 @@ for variable in headers:
 for line in lines[1:]:
     matching = re.match(KFUSION_LOG_REGEX, line)
     if matching:
-        print line
         dropped = int(matching.group(1)) - lastFrame - 1
         if dropped > 0:
             framesDropped = framesDropped + dropped
