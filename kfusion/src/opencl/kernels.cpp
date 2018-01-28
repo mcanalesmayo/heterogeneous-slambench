@@ -1033,6 +1033,8 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 	}
 
 	timingsCPU[6] = 0.0f;
+	timingsIO[6] = 0.0f;
+
 	startOfTiming = benchmark_tock();
 	oldPose = pose;
 	const Matrix4 projectReference = getCameraMatrix(k) * inverse(raycastPose);
@@ -1138,11 +1140,11 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 
 		}
 	}
-	timingsCPU[6] = benchmark_tock();
+	startOfTiming = benchmark_tock();
 	checkPoseKernelRes = checkPoseKernel(pose, oldPose, reductionoutput, computationSize,
 			track_threshold);
 	endOfTiming = benchmark_tock();
-	timingsCPU[6] += endOfTiming - endOfTiming;
+	timingsCPU[6] += endOfTiming - startOfTiming;
 
 	return checkPoseKernelRes;
 
