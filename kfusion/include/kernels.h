@@ -82,15 +82,17 @@ private:
 	bool _tracked;
 	bool _integrated;
 	float3 _initPose;
-	double* timings;
+	double* timingsIO;
+	double* timingsCPU;
 
 	void raycast(uint frame, const float4& k, float mu);
 
 public:
 	Kfusion(uint2 inputSize, uint3 volumeResolution, float3 volumeDimensions,
-			float3 initPose, std::vector<int> & pyramid, double* timingsPtr) :
+			float3 initPose, std::vector<int> & pyramid, double* timingsIOPtr, double* timingsCPUPtr) :
 			computationSize(make_uint2(inputSize.x, inputSize.y)) {
-		timings = timingsPtr;
+		timingsIO = timingsIOPtr;
+		timingsCPU = timingsCPUPtr;
 
 		this->_initPose = initPose;
 		this->volumeDimensions = volumeDimensions;
@@ -111,9 +113,10 @@ public:
 	}
 	//Allow a kfusion object to be created with a pose which include orientation as well as position
 	Kfusion(uint2 inputSize, uint3 volumeResolution, float3 volumeDimensions,
-			Matrix4 initPose, std::vector<int> & pyramid, double* timingsPtr) :
+			Matrix4 initPose, std::vector<int> & pyramid, double* timingsIOPtr, double* timingsCPUPtr) :
 			computationSize(make_uint2(inputSize.x, inputSize.y)) {
-		timings = timingsPtr;
+		timingsIO = timingsIOPtr;
+		timingsCPU = timingsCPUPtr;
 
 		this->_initPose = getPosition();
 		this->volumeDimensions = volumeDimensions;

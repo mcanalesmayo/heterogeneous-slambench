@@ -18,27 +18,23 @@ DATASET = sys.argv[2]
 # cpp | openmp | cuda | opencl
 PLATFORM = sys.argv[3]
 
-ANALYZE_LOGS = ['pos', 'kernels']
+ANALYZE_LOGS = ['pos_io', 'pos_cpu', 'kernels']
 
-# clean benchmark files
-KERNELS_FILE = DATASET + '.' + PLATFORM + '.log.kernels.csv'
-POS_FILE = DATASET + '.' + PLATFORM + '.log.pos.csv'
+# clean
+for fileSuffix in ANALYZE_LOGS:
+    filename = '.'.join([DATASET, PLATFORM, 'log', fileSuffix, 'csv'])
+    file_exists = os.path.isfile(filename)
+    if file_exists:
+        print 'Removing ' + filename
+        os.remove(filename)
 
-file_exists = os.path.isfile(KERNELS_FILE)
-if file_exists:
-    print 'Removing ' + KERNELS_FILE
-    os.remove(KERNELS_FILE)
-file_exists = os.path.isfile(POS_FILE)
-if file_exists:
-    print 'Removing ' + POS_FILE
-    os.remove(POS_FILE)
-
+# exec N_EXECS times
 proc_params = ['make', '.'.join([DATASET, PLATFORM, 'log'])]
-
 for i in range(0, N_EXECS):
     print 'Running #{0}'.format(str(i+1))
     call(proc_params)
 
+# analyze
 for fileSuffix in ANALYZE_LOGS:
     filename = '.'.join([DATASET, PLATFORM, 'log', fileSuffix, 'csv'])
 

@@ -54,8 +54,8 @@ int main(int argc, char ** argv) {
 
 	// ========= CHECK ARGS =====================
 
-	std::ostream* logstream = &std::cout;
-	std::ofstream logfilestream;
+	std::ostream* logstream_io = &std::cout, logstream_cpu = &std::cout;
+	std::ofstream logfilestream_io, logfilestream_cpu;
 	assert(config.compute_size_ratio > 0);
 	assert(config.integration_rate > 0);
 	assert(config.volume_size.x > 0);
@@ -68,8 +68,12 @@ int main(int argc, char ** argv) {
 	// }
 
 	if (config.log_file != "") {
-		logfilestream.open(config.log_file.c_str());
-		logstream = &logfilestream;
+		logfilestream_io.open(config.log_file.c_str());
+		logstream_io = &logfilestream_io;
+	}
+	if (config.log_file_cpu != "") {
+		logfilestream_cpu.open(config.log_file_cpu.c_str());
+		logstream_cpu = &logfilestream_cpu;
 	}
 	if (config.input_file == "") {
 		std::cerr << "No input found." << std::endl;
@@ -122,17 +126,19 @@ int main(int argc, char ** argv) {
 
 	uint frame = 0;
 
-	double* timings = (double *) malloc(13 * sizeof(double));
-	double startOfKernel, endOfKernel, computationTotal, overallTotal;
+	// 13 kernels
+	double* timingsIO = (double *) malloc(13 * sizeof(double));
+	double* timingsCPU = (double *) malloc(13 * sizeof(double));
+	double startOfKernel, endOfKernel, computationTotalIO, computationTotalCPU, overallTotalIO, overallTotalCPU;
 	Kfusion kfusion(computationSize, config.volume_resolution,
-			config.volume_size, init_pose, config.pyramid, timings);
+			config.volume_size, init_pose, config.pyramid, timingsIO, timingsCPU);
 
-	*logstream
+	*logstream_io
 			<< "frame\tacquisition\tpreprocess_mm2meters\tpreprocess_bilateralFilter\ttrack_halfSample\ttrack_depth2vertex\ttrack_vertex2normal"
 			<< "\ttrack_track\ttrack_reduce\tintegrate\traycast\trenderDepth\trenderTrack\trenderVolume"
 			<< "\tcomputation\ttotal    \tX          \tY          \tZ         \ttracked   \tintegrated"
 			<< std::endl;
-	logstream->setf(std::ios::fixed, std::ios::floatfield);
+	logstream_io->setf(std::ios::fixed, std::ios::floatfield);
 
 	startOfKernel = benchmark_tock();
 	while (reader->readNextDepthFrame(inputDepth)) {
@@ -144,7 +150,7 @@ int main(int argc, char ** argv) {
 		float zt = pose.data[2].w - init_pose.z;
 
 		endOfKernel = benchmark_tock();
-		timings[0] = endOfKernel - startOfKernel;
+		timingsIO[0] = endOfKernel - startOfKernel;
 
 		kfusion.preprocessing(inputDepth, inputSize);
 
@@ -162,28 +168,55 @@ int main(int argc, char ** argv) {
 				config.rendering_rate, camera, 0.75 * config.mu);
 
 		// skip acquisition stage for computation measure
-		computationTotal = 0.0f;
+		computationTotalIO = 0.0f;
 		for(uint i=1; i<13; i++) {
-			computationTotal += timings[i];
+			computationTotalIO += timingsIO[i];
 		}
 
-		overallTotal = computationTotal + timings[0];
+		overallTotalIO = computationTotalIO + timingsIO[0];
 
-		*logstream << frame << "\t" << timings[0] << "\t" //  acquisition
-				<< timings[1] << "\t"     //  preprocessing --> mm2meters
-				<< timings[2] << "\t"     //  preprocessing --> bilateralFilter
-				<< timings[3] << "\t"     //  tracking --> halfSample
-				<< timings[4] << "\t"     //  tracking --> depth2vertex
-				<< timings[5] << "\t"     //  tracking --> vertex2normal
-				<< timings[6] << "\t"     //  tracking --> track
-				<< timings[7] << "\t"     //  tracking --> reduce
-				<< timings[8] << "\t"     //  integration --> integrate
-				<< timings[9] << "\t"     //  raycasting --> raycast
-				<< timings[10] << "\t"     //  rendering --> renderDepth
-				<< timings[11] << "\t"     //  rendering --> renderTrack
-				<< timings[12] << "\t"     //  rendering --> renderVolume
-				<< computationTotal << "\t"     //  computation
-				<< overallTotal << "\t"     //  total
+		*logstream_io << frame << "\t" << timingsIO[0] << "\t" //  acquisition
+				<< timingsIO[1] << "\t"     //  preprocessing --> mm2meters
+				<< timingsIO[2] << "\t"     //  preprocessing --> bilateralFilter
+				<< timingsIO[3] << "\t"     //  tracking --> halfSample
+				<< timingsIO[4] << "\t"     //  tracking --> depth2vertex
+				<< timingsIO[5] << "\t"     //  tracking --> vertex2normal
+				<< timingsIO[6] << "\t"     //  tracking --> track
+				<< timingsIO[7] << "\t"     //  tracking --> reduce
+				<< timingsIO[8] << "\t"     //  integration --> integrate
+				<< timingsIO[9] << "\t"     //  raycasting --> raycast
+				<< timingsIO[10] << "\t"     //  rendering --> renderDepth
+				<< timingsIO[11] << "\t"     //  rendering --> renderTrack
+				<< timingsIO[12] << "\t"     //  rendering --> renderVolume
+				<< computationTotalIO << "\t"     //  computation
+				<< overallTotalIO << "\t"     //  total
+				<< xt << "\t" << yt << "\t" << zt << "\t"     //  X,Y,Z
+				<< tracked << "        \t" << integrated // tracked and integrated flags
+				<< std::endl;
+
+		// skip acquisition stage for computation measure
+		computationTotalCPU = 0.0f;
+		for(uint i=1; i<13; i++) {
+			computationTotalCPU += timingsCPU[i];
+		}
+
+		overallTotalCPU = computationTotalCPU + timingsCPU[0];
+
+		*logstream_cpu << frame << "\t" << timingsCPU[0] << "\t" //  acquisition
+				<< timingsCPU[1] << "\t"     //  preprocessing --> mm2meters
+				<< timingsCPU[2] << "\t"     //  preprocessing --> bilateralFilter
+				<< timingsCPU[3] << "\t"     //  tracking --> halfSample
+				<< timingsCPU[4] << "\t"     //  tracking --> depth2vertex
+				<< timingsCPU[5] << "\t"     //  tracking --> vertex2normal
+				<< timingsCPU[6] << "\t"     //  tracking --> track
+				<< timingsCPU[7] << "\t"     //  tracking --> reduce
+				<< timingsCPU[8] << "\t"     //  integration --> integrate
+				<< timingsCPU[9] << "\t"     //  raycasting --> raycast
+				<< timingsCPU[10] << "\t"     //  rendering --> renderDepth
+				<< timingsCPU[11] << "\t"     //  rendering --> renderTrack
+				<< timingsCPU[12] << "\t"     //  rendering --> renderVolume
+				<< computationTotalCPU << "\t"     //  computation
+				<< overallTotalCPU << "\t"     //  total
 				<< xt << "\t" << yt << "\t" << zt << "\t"     //  X,Y,Z
 				<< tracked << "        \t" << integrated // tracked and integrated flags
 				<< std::endl;
@@ -200,7 +233,8 @@ int main(int argc, char ** argv) {
 
 	//  =========  FREE BASIC BUFFERS  =========
 
-	free(timings);
+	free(timingsIO);
+	free(timingsCPU);
 	free(inputDepth);
 	free(depthRender);
 	free(trackRender);
