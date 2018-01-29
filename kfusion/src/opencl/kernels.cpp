@@ -116,7 +116,7 @@ void clean() {
 void Kfusion::languageSpecificConstructor() {
 	init();
 
-	if (getenv("KERNEL_timingsIO"))
+	if (getenv("KERNEL_TIMINGS"))
 		print_kernel_timing = true;
 
 	
