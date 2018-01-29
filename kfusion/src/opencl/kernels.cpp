@@ -43,7 +43,7 @@
 
 #endif
 
-#define NUM_THREADS_REDUCE_KERNEL 1
+#define NUM_THREADS_REDUCE_KERNEL 200
 
 inline double benchmark_tock() {
 	synchroniseDevices();
@@ -116,7 +116,7 @@ void clean() {
 void Kfusion::languageSpecificConstructor() {
 	init();
 
-	if (getenv("KERNEL_TIMINGS"))
+	if (getenv("KERNEL_timingsIO"))
 		print_kernel_timing = true;
 
 	
@@ -1005,7 +1005,7 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 		localimagesize = make_uint2(localimagesize.x / 2, localimagesize.y / 2);
 	}
 
-	timings[7] = 0.0f;
+	timingsIO[7] = 0.0f;
 
 	oldPose = pose;
 	const Matrix4 projectReference = getCameraMatrix(k) * inverse(raycastPose);
@@ -1057,7 +1057,7 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 
 			updatePoseKernelRes = updatePoseKernel(pose, reductionoutput, icp_threshold);
 			endOfKernel = benchmark_tock();
-			timings[7] += endOfKernel - startOfKernel;
+			timingsIO[7] += endOfKernel - startOfKernel;
 
 			if (updatePoseKernelRes) break;
 
