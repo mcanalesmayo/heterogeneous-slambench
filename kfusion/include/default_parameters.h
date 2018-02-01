@@ -52,7 +52,7 @@ inline std::string pyramid2str(std::vector<int> v) {
 
 }
 
-static std::string short_options = "qc:d:f:i:l:m:k:o:p:r:s:t:v:y:z:a:b:";
+static std::string short_options = "qc:d:f:i:l:m:k:o:p:r:s:t:v:y:z:a:e:";
 
 static struct option long_options[] =
   {
@@ -64,7 +64,7 @@ static struct option long_options[] =
 		    {"icp-threshold", 	 	   required_argument, 0, 'l'},
 		    {"log-file",  			   required_argument, 0, 'o'},
 		    {"log-file-cpu",  		   required_argument, 0, 'a'},
-		    {"log-file-custom",  	   required_argument, 0, 'b'},
+		    {"log-file-custom",  	   required_argument, 0, 'e'},
 		    {"mu", 			 		   required_argument, 0, 'm'},
 		    {"init-pose",  			   required_argument, 0, 'p'},
 		    {"no-gui",  			   no_argument,       0, 'q'},
@@ -94,6 +94,7 @@ struct Configuration {
 	std::string input_file;
 	std::string log_file;
 	std::string log_file_cpu;
+	std::string log_file_custom;
 	std::ofstream log_filestream;
 	std::ostream *log_stream;
 
@@ -116,7 +117,7 @@ struct Configuration {
 		std ::cerr << "-l  (--icp-threshold)            : default is " << default_icp_threshold << std::endl;
 		std ::cerr << "-o  (--log-file) <filename>      : default is stdout               " << std::endl;
 		std ::cerr << "-a  (--log-file-cpu) <filename>  : default is stdout               " << std::endl;
-		std ::cerr << "-b  (--log-file-custom) <filename>  : default is stdout               " << std::endl;
+		std ::cerr << "-e  (--log-file-custom) <filename>  : default is stdout               " << std::endl;
 		std ::cerr << "-m  (--mu)                       : default is " << default_mu << "               " << std::endl;
 		std ::cerr << "-p  (--init-pose)                : default is " << default_initial_pos_factor.x << "," << default_initial_pos_factor.y << "," << default_initial_pos_factor.z << "     " << std::endl;
 		std ::cerr << "-q  (--no-gui)                   : default is to display gui"<<std::endl;
@@ -333,7 +334,7 @@ time_t rawtime;
 				std::cerr << "update log_file_cpu to " << this->log_file_cpu
 						<< std::endl;
 				break;
-			case 'b':    //   -a  (--log-file-custom)
+			case 'e':    //   -a  (--log-file-custom)
 				this->log_file_custom = optarg;
 				std::cerr << "update log_file_custom to " << this->log_file_custom
 						<< std::endl;
