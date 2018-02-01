@@ -1186,6 +1186,7 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 			track_threshold);
 	endOfTiming = benchmark_tock();
 	timingsCPU[6] += endOfTiming - startOfTiming;
+	timingsCustom[4] = endOfTiming - startOfTiming;
 
 	return checkPoseKernelRes;
 
