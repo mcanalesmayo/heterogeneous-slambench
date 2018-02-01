@@ -56,8 +56,10 @@ int main(int argc, char ** argv) {
 
 	std::ostream* logstreamIO = &std::cout;
 	std::ostream* logstreamCPU = &std::cout;
+	std::ostream* logstreamCustom = &std::cout;
 	std::ofstream logfilestreamIO;
 	std::ofstream logfilestreamCPU;
+	std::ofstream logfilestreamCustom;
 	assert(config.compute_size_ratio > 0);
 	assert(config.integration_rate > 0);
 	assert(config.volume_size.x > 0);
@@ -76,6 +78,10 @@ int main(int argc, char ** argv) {
 	if (config.log_file_cpu != "") {
 		logfilestreamCPU.open(config.log_file_cpu.c_str());
 		logstreamCPU = &logfilestreamCPU;
+	}
+	if (config.log_file_custom != "") {
+		logfilestreamCustom.open(config.log_file_custom.c_str());
+		logstreamCustom = &logfilestreamCustom;
 	}
 	if (config.input_file == "") {
 		std::cerr << "No input found." << std::endl;
@@ -131,9 +137,10 @@ int main(int argc, char ** argv) {
 	// 13 kernels
 	double* timingsIO = (double *) malloc(13 * sizeof(double));
 	double* timingsCPU = (double *) malloc(13 * sizeof(double));
-	double startOfKernel, endOfKernel, computationTotalIO, computationTotalCPU, overallTotalIO, overallTotalCPU;
+	double* timingsCustom = (double *) malloc(64 * sizeof(double));
+	double startOfKernel, endOfKernel, computationTotalIO, computationTotalCPU, computationTotalCustom, overallTotalIO, overallTotalCPU, overallTotalCustom;
 	Kfusion kfusion(computationSize, config.volume_resolution,
-			config.volume_size, init_pose, config.pyramid, timingsIO, timingsCPU);
+			config.volume_size, init_pose, config.pyramid, timingsIO, timingsCPU, timingsCustom);
 
 	*logstreamIO
 			<< "frame\tacquisition\tpreprocess_mm2meters\tpreprocess_bilateralFilter\ttrack_halfSample\ttrack_depth2vertex\ttrack_vertex2normal"
@@ -147,6 +154,12 @@ int main(int argc, char ** argv) {
 			<< "\tcomputation\ttotal    \tX          \tY          \tZ         \ttracked   \tintegrated"
 			<< std::endl;
 	logstreamCPU->setf(std::ios::fixed, std::ios::floatfield);
+	*logstreamCustom
+			<< "frame\tacquisition\tpreprocess_mm2meters\tpreprocess_bilateralFilter\ttrack_halfSample\ttrack_depth2vertex\ttrack_vertex2normal"
+			<< "\ttrack_track\ttrack_reduce\tintegrate\traycast\trenderDepth\trenderTrack\trenderVolume"
+			<< "\tcomputation\ttotal    \tX          \tY          \tZ         \ttracked   \tintegrated"
+			<< std::endl;
+	logstreamCustom->setf(std::ios::fixed, std::ios::floatfield);
 
 	startOfKernel = benchmark_tock();
 	while (reader->readNextDepthFrame(inputDepth)) {
@@ -229,6 +242,28 @@ int main(int argc, char ** argv) {
 				<< tracked << "        \t" << integrated // tracked and integrated flags
 				<< std::endl;
 
+		// skip acquisition stage for computation measure
+		computationTotalCustom = 0.0f;
+		for(uint i=1; i<13; i++) {
+			computationTotalCustom += timingsCustom[i];
+		}
+
+		overallTotalCustom = computationTotalCustom + timingsCustom[0];
+
+		*logstreamCustom << frame << "\t";
+		for(uint i=0; i<6 /* number of kernel launches */; i+=5) {
+			*logstreamCustom << timingsCustom[i] << "\t"	//  buffer
+				<< timingsCustom[i+1] << "\t"     			//  cpu
+				<< timingsCustom[i+2] << "\t"     			//  kernel
+				<< timingsCustom[i+3] << "\t"     			//  buffer
+				<< timingsCustom[i+4] << "\t";    			//  cpu
+		}
+
+		*logstreamCustom << computationTotalCustom << "\t"     //  computation
+			<< overallTotalCustom << "\t"     //  total
+			<< std::endl;
+
+
 		frame++;
 
 		startOfKernel = benchmark_tock();
@@ -243,6 +278,7 @@ int main(int argc, char ** argv) {
 
 	free(timingsIO);
 	free(timingsCPU);
+	free(timingsCustom);
 	free(inputDepth);
 	free(depthRender);
 	free(trackRender);
