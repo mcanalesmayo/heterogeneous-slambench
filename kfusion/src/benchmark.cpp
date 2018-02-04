@@ -137,7 +137,7 @@ int main(int argc, char ** argv) {
 	// 13 kernels
 	double* timingsIO = (double *) malloc(13 * sizeof(double));
 	double* timingsCPU = (double *) malloc(13 * sizeof(double));
-	double* timingsCustom = (double *) malloc(64 * sizeof(double));
+	double* timingsCustom = (double *) calloc(64, sizeof(double));
 	double startOfKernel, endOfKernel, computationTotalIO, computationTotalCPU, computationTotalCustom, overallTotalIO, overallTotalCPU, overallTotalCustom;
 	Kfusion kfusion(computationSize, config.volume_resolution,
 			config.volume_size, init_pose, config.pyramid, timingsIO, timingsCPU, timingsCustom);
@@ -155,13 +155,10 @@ int main(int argc, char ** argv) {
 			<< std::endl;
 	logstreamCPU->setf(std::ios::fixed, std::ios::floatfield);
 	*logstreamCustom << "frame" << "\t";
-	for (uint i=0; i<6; i+=5) {
-		*logstreamCustom << "buffer" << i << "\t"	//  buffer
-				<< "cpu" << i << "\t"     			//  cpu
-				<< "kernel" << i << "\t"     		//  kernel
-				<< "buffer" << i << "\t"     		//  buffer
-				<< "cpu" << i << "\t";		 		//  cpu
+	for (uint i=0; i<64; i++) {
+		*logstreamCustom << i << "\t";
 	}
+	*logstreamCustom << "computation\ttotal";
 	*logstreamCustom << std::endl;
 
 	logstreamCustom->setf(std::ios::fixed, std::ios::floatfield);
@@ -256,12 +253,8 @@ int main(int argc, char ** argv) {
 		overallTotalCustom = computationTotalCustom + timingsCustom[0];
 
 		*logstreamCustom << frame << "\t";
-		for(uint i=0; i<6 /* number of kernel launches */; i+=5) {
-			*logstreamCustom << timingsCustom[i] << "\t"	//  buffer
-				<< timingsCustom[i+1] << "\t"     			//  cpu
-				<< timingsCustom[i+2] << "\t"     			//  kernel
-				<< timingsCustom[i+3] << "\t"     			//  buffer
-				<< timingsCustom[i+4] << "\t";    			//  cpu
+		for(uint i=0; i<64; i++) {
+			*logstreamCustom << timingsCustom[i] << "\t";
 		}
 
 		*logstreamCustom << computationTotalCustom << "\t"     //  computation
