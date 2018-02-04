@@ -1066,6 +1066,7 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 		localimagesize = make_uint2(localimagesize.x / 2, localimagesize.y / 2);
 	}
 
+	uint customIdx = 0;
 	timingsCPU[6] = 0.0f;
 	timingsIO[6] = 0.0f;
 
@@ -1074,24 +1075,27 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 	const Matrix4 projectReference = getCameraMatrix(k) * inverse(raycastPose);
 	endOfTiming = benchmark_tock();
 	timingsCPU[6] += endOfTiming - startOfTiming;
-	timingsCustom[0] = endOfTiming - startOfTiming;
+	timingsCustom[customIdx] = endOfTiming - startOfTiming;
+	customIdx += 1;
 
 	bool checkPoseKernelRes;
+
+	clError = clEnqueueWriteBuffer(cmd_queues[0][0], ocl_vertex, CL_TRUE, 0, sizeof(float3) * (computationSize.x * computationSize.y), vertex, 0, NULL, NULL);
+    clError = clEnqueueWriteBuffer(cmd_queues[0][0], ocl_normal, CL_TRUE, 0, sizeof(float3) * (computationSize.x * computationSize.y), normal, 0, NULL, NULL);
 
 	for (int level = iterations.size() - 1; level >= 0; --level) {
 		uint2 localimagesize = make_uint2(
 				computationSize.x / (int) pow(2, level),
 				computationSize.y / (int) pow(2, level));
+
+		clError = clEnqueueWriteBuffer(cmd_queues[0][0], ocl_inputVertex[level], CL_TRUE, 0, sizeof(float3) * (computationSize.x * computationSize.y) / (int) pow(2, level), inputVertex[level], 0, NULL, NULL);
+        clError = clEnqueueWriteBuffer(cmd_queues[0][0], ocl_inputNormal[level], CL_TRUE, 0, sizeof(float3) * (computationSize.x * computationSize.y) / (int) pow(2, level), inputNormal[level], 0, NULL, NULL);
+
 		for (int i = 0; i < iterations[level]; ++i) {
 			startOfTiming = benchmark_tock();
 
             int arg = 0;
             char errStr[20];
-
-            clError = clEnqueueWriteBuffer(cmd_queues[0][0], ocl_inputVertex[level], CL_TRUE, 0, sizeof(float3) * (computationSize.x * computationSize.y) / (int) pow(2, level), inputVertex[level], 0, NULL, NULL);
-            clError = clEnqueueWriteBuffer(cmd_queues[0][0], ocl_inputNormal[level], CL_TRUE, 0, sizeof(float3) * (computationSize.x * computationSize.y) / (int) pow(2, level), inputNormal[level], 0, NULL, NULL);
-            clError = clEnqueueWriteBuffer(cmd_queues[0][0], ocl_vertex, CL_TRUE, 0, sizeof(float3) * (computationSize.x * computationSize.y), vertex, 0, NULL, NULL);
-            clError = clEnqueueWriteBuffer(cmd_queues[0][0], ocl_normal, CL_TRUE, 0, sizeof(float3) * (computationSize.x * computationSize.y), normal, 0, NULL, NULL);
 
             clError = clSetKernelArg(track_ocl_kernel, arg++, sizeof(cl_mem), &ocl_trackingResult);
             sprintf(errStr, "clSetKernelArg%d", arg);
@@ -1156,7 +1160,8 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 
             endOfTiming = benchmark_tock();
 			timingsIO[6] += endOfTiming - startOfTiming;
-			timingsCustom[1] = endOfTiming - startOfTiming;
+			timingsCustom[customIdx] = endOfTiming - startOfTiming;
+			customIdx += 1;
 			startOfTiming = endOfTiming;
 
             size_t globalWorksize[2] = { localimagesize.x, localimagesize.y };
@@ -1164,14 +1169,16 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
             checkErr(clError, "clEnqueueNDRangeKernel");
 
             endOfTiming = benchmark_tock();
-            timingsCustom[2] = endOfTiming - startOfTiming;
+            timingsCustom[customIdx] = endOfTiming - startOfTiming;
+            customIdx += 1;
             startOfTiming = endOfTiming;
 
             clEnqueueReadBuffer(cmd_queues[0][0], ocl_trackingResult, CL_TRUE, 0, sizeof(TrackData) * (computationSize.x * computationSize.y), trackingResult, 0, NULL, NULL);
 
             endOfTiming = benchmark_tock();
 			timingsIO[6] += endOfTiming - startOfTiming;
-			timingsCustom[3] = endOfTiming - startOfTiming;
+			timingsCustom[customIdx] = endOfTiming - startOfTiming;
+			customIdx += 1;
 
 			reduceKernel(reductionoutput, trackingResult, computationSize,
 					localimagesize);
@@ -1186,7 +1193,7 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 			track_threshold);
 	endOfTiming = benchmark_tock();
 	timingsCPU[6] += endOfTiming - startOfTiming;
-	timingsCustom[4] = endOfTiming - startOfTiming;
+	timingsCustom[customIdx] = endOfTiming - startOfTiming;
 
 	return checkPoseKernelRes;
 
