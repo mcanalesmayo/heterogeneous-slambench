@@ -43,6 +43,8 @@
 
 #endif
 
+#define NUM_THREADS_REDUCE_KERNEL 200
+
 inline double benchmark_tock() {
 	synchroniseDevices();
 #ifdef __APPLE__
@@ -61,12 +63,14 @@ inline double benchmark_tock() {
 double startOfTiming, endOfTiming;
 
 cl_kernel track_ocl_kernel;
+cl_kernel reduce_ocl_kernel[3];
 
 cl_mem ocl_trackingResult = NULL;
 cl_mem * ocl_inputVertex = NULL;
 cl_mem * ocl_inputNormal = NULL;
 cl_mem ocl_vertex = NULL;
 cl_mem ocl_normal = NULL;
+cl_mem ocl_reduce_output_buffer = NULL;
 
 // input once
 float * gaussian;
@@ -112,28 +116,41 @@ void Kfusion::languageSpecificConstructor() {
     track_ocl_kernel = clCreateKernel(programs[0], "trackKernel", &clError);
     checkErr(clError, "clCreateKernel");
 
+    char kernelName[20];
+	for(int i=0; i<3; i++) {
+		sprintf(kernelName, "reduceKernel%d", i+1);
+		reduce_ocl_kernel[i] = clCreateKernel(programs[0], kernelName, &clError);
+		checkErr(clError, "clCreateKernel");
+	}
+
     ocl_inputVertex = (cl_mem*) malloc(sizeof(cl_mem) * iterations.size());
     ocl_inputNormal = (cl_mem*) malloc(sizeof(cl_mem) * iterations.size());
 
     for (unsigned int i = 0; i < iterations.size(); ++i) {
-        ocl_inputVertex[i] = clCreateBuffer(contexts[0], CL_MEM_READ_WRITE, sizeof(float3) * (computationSize.x * computationSize.y) / (int) pow(2, i), NULL, &clError);
+        ocl_inputVertex[i] = clCreateBuffer(contexts[0], CL_MEM_READ_ONLY, sizeof(float3) * (computationSize.x * computationSize.y) / (int) pow(2, i), NULL, &clError);
         checkErr(clError, "clCreateBuffer");
-        ocl_inputNormal[i] = clCreateBuffer(contexts[0], CL_MEM_READ_WRITE, sizeof(float3) * (computationSize.x * computationSize.y) / (int) pow(2, i), NULL, &clError);
+        ocl_inputNormal[i] = clCreateBuffer(contexts[0], CL_MEM_READ_ONLY, sizeof(float3) * (computationSize.x * computationSize.y) / (int) pow(2, i), NULL, &clError);
         checkErr(clError, "clCreateBuffer");
     }
 
-    ocl_vertex = clCreateBuffer(contexts[0], CL_MEM_READ_WRITE, sizeof(float3) * computationSize.x * computationSize.y, NULL, &clError);
+    ocl_vertex = clCreateBuffer(contexts[0], CL_MEM_READ_ONLY, sizeof(float3) * computationSize.x * computationSize.y, NULL, &clError);
     checkErr(clError, "clCreateBuffer");
-    ocl_normal = clCreateBuffer(contexts[0], CL_MEM_READ_WRITE, sizeof(float3) * computationSize.x * computationSize.y, NULL, &clError);
+    ocl_normal = clCreateBuffer(contexts[0], CL_MEM_READ_ONLY, sizeof(float3) * computationSize.x * computationSize.y, NULL, &clError);
     checkErr(clError, "clCreateBuffer");
     ocl_trackingResult = clCreateBuffer(contexts[0], CL_MEM_READ_WRITE, sizeof(TrackData) * computationSize.x * computationSize.y, NULL, &clError);
     checkErr(clError, "clCreateBuffer");
+
+    ocl_reduce_output_buffer = clCreateBuffer(contexts[0], CL_MEM_WRITE_ONLY, NUM_THREADS_REDUCE_KERNEL * 32 * sizeof(float), NULL, &clError);
+	checkErr(clError, "clCreateBuffer");
 
 	if (getenv("KERNEL_timingsIO"))
 		print_kernel_timing = true;
 
 	// internal buffers to initialize
-	reductionoutput = (float*) calloc(sizeof(float) * 8 * 32, 1);
+	posix_memalign((void **) &reductionoutput, 64, sizeof(float) * NUM_THREADS_REDUCE_KERNEL * 32);
+	for (uint i=0; i<NUM_THREADS_REDUCE_KERNEL*32; i++) {
+		reductionoutput[i] = 0.0f;
+	}
 
 	ScaledDepth = (float**) calloc(sizeof(float*) * iterations.size(), 1);
 	//inputVertex = (float3**) calloc(sizeof(float3*) * iterations.size(), 1);
@@ -145,18 +162,14 @@ void Kfusion::languageSpecificConstructor() {
 		ScaledDepth[i] = (float*) calloc(
 				sizeof(float) * (computationSize.x * computationSize.y)
 						/ (int) pow(2, i), 1);
-		// inputVertex[i] = (float3*) calloc(
-		// 		sizeof(float3) * (computationSize.x * computationSize.y)
-		// 				/ (int) pow(2, i), 1);
+
 		posix_memalign((void **) &inputVertex[i], 64, sizeof(float3) * (computationSize.x * computationSize.y) / (int) pow(2, i));
 		for (unsigned int j=0; j<(computationSize.x * computationSize.y) / (int) pow(2, i); j++) {
 			inputVertex[i][j].x = 0.0f;
 			inputVertex[i][j].y = 0.0f;
 			inputVertex[i][j].z = 0.0f;
 		}
-		// inputNormal[i] = (float3*) calloc(
-		// 		sizeof(float3) * (computationSize.x * computationSize.y)
-		// 				/ (int) pow(2, i), 1);
+
 		posix_memalign((void **) &inputNormal[i], 64, sizeof(float3) * (computationSize.x * computationSize.y) / (int) pow(2, i));
 		for (unsigned int j=0; j<(computationSize.x * computationSize.y) / (int) pow(2, i); j++) {
 			inputNormal[i][j].x = 0.0f;
@@ -167,24 +180,18 @@ void Kfusion::languageSpecificConstructor() {
 
 	floatDepth = (float*) calloc(
 			sizeof(float) * computationSize.x * computationSize.y, 1);
-	// vertex = (float3*) calloc(
-	// 		sizeof(float3) * computationSize.x * computationSize.y, 1);
 	posix_memalign((void **) &vertex, 64, sizeof(float3) * computationSize.x * computationSize.y);
 	for (unsigned int i=0; i<computationSize.x * computationSize.y; i++) {
 		vertex[i].x = 0.0f;
 		vertex[i].y = 0.0f;
 		vertex[i].z = 0.0f;
 	}
-	// normal = (float3*) calloc(
-	// 		sizeof(float3) * computationSize.x * computationSize.y, 1);
 	posix_memalign((void **) &normal, 64, sizeof(float3) * computationSize.x * computationSize.y);
 	for (unsigned int i=0; i<computationSize.x * computationSize.y; i++) {
 		normal[i].x = 0.0f;
 		normal[i].y = 0.0f;
 		normal[i].z = 0.0f;
 	}
-	// trackingResult = (TrackData*) calloc(
-	// 		sizeof(TrackData) * computationSize.x * computationSize.y, 1);
 	posix_memalign((void **) &trackingResult, 64, sizeof(TrackData) * computationSize.x * computationSize.y);
 	for (unsigned int i=0; i<computationSize.x * computationSize.y; i++) {
 		trackingResult[i].result = 0;
@@ -247,6 +254,11 @@ Kfusion::~Kfusion() {
         checkErr(clError, "clReleaseMem");
         ocl_trackingResult = NULL;
     }
+    if (ocl_reduce_output_buffer) {
+        clError = clReleaseMemObject(ocl_reduce_output_buffer);
+        checkErr(clError, "clReleaseMem");
+        ocl_reduce_output_buffer = NULL;
+    }
 
 	free(floatDepth);
 	free(trackingResult);
@@ -267,6 +279,10 @@ Kfusion::~Kfusion() {
 
     RELEASE_KERNEL(track_ocl_kernel);
     track_ocl_kernel = NULL;
+    for(int i=0; i<3; i++) {
+		RELEASE_KERNEL(reduce_ocl_kernel[i]);
+		reduce_ocl_kernel[i] = NULL;
+	}
 
 	volume.release();
 }
@@ -1069,6 +1085,8 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 	uint customIdx = 0;
 	timingsCPU[6] = 0.0f;
 	timingsIO[6] = 0.0f;
+	timingsCPU[7] = 0.0f;
+	timingsIO[7] = 0.0f;
 
 	startOfTiming = benchmark_tock();
 	oldPose = pose;
@@ -1076,23 +1094,34 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 	endOfTiming = benchmark_tock();
 	timingsCPU[6] += endOfTiming - startOfTiming;
 	timingsCustom[customIdx] = endOfTiming - startOfTiming;
+	startOfTiming = endOfTiming;
 	customIdx += 1;
 
-	bool checkPoseKernelRes;
+	bool checkPoseKernelRes, updatePoseKernelRes;
 
 	clError = clEnqueueWriteBuffer(cmd_queues[0][0], ocl_vertex, CL_TRUE, 0, sizeof(float3) * (computationSize.x * computationSize.y), vertex, 0, NULL, NULL);
     clError = clEnqueueWriteBuffer(cmd_queues[0][0], ocl_normal, CL_TRUE, 0, sizeof(float3) * (computationSize.x * computationSize.y), normal, 0, NULL, NULL);
+
+    endOfTiming = benchmark_tock();
+    timingsIO[6] += endOfTiming - startOfTiming;
+    timingsCustom[customIdx] = endOfTiming - startOfTiming;
+    customIdx += 1;
 
 	for (int level = iterations.size() - 1; level >= 0; --level) {
 		uint2 localimagesize = make_uint2(
 				computationSize.x / (int) pow(2, level),
 				computationSize.y / (int) pow(2, level));
 
+		startOfTiming = benchmark_tock();
 		clError = clEnqueueWriteBuffer(cmd_queues[0][0], ocl_inputVertex[level], CL_TRUE, 0, sizeof(float3) * (computationSize.x * computationSize.y) / (int) pow(2, level), inputVertex[level], 0, NULL, NULL);
         clError = clEnqueueWriteBuffer(cmd_queues[0][0], ocl_inputNormal[level], CL_TRUE, 0, sizeof(float3) * (computationSize.x * computationSize.y) / (int) pow(2, level), inputNormal[level], 0, NULL, NULL);
+        endOfTiming = benchmark_tock();
+        timingsIO[6] += endOfTiming - startOfTiming;
+        timingsCustom[customIdx] = endOfTiming - startOfTiming;
+    	customIdx += 1;
 
 		for (int i = 0; i < iterations[level]; ++i) {
-			startOfTiming = benchmark_tock();
+			startOfTiming = endOfTiming;
 
             int arg = 0;
             char errStr[20];
@@ -1173,24 +1202,56 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
             customIdx += 1;
             startOfTiming = endOfTiming;
 
-            clEnqueueReadBuffer(cmd_queues[0][0], ocl_trackingResult, CL_TRUE, 0, sizeof(TrackData) * (computationSize.x * computationSize.y), trackingResult, 0, NULL, NULL);
+			arg = 0;
+			clError = clSetKernelArg(reduce_ocl_kernel[level], arg++, sizeof(cl_mem), &ocl_reduce_output_buffer);
+			sprintf(errStr, "clSetKernelArg%d", arg);
+			checkErr(clError, errStr);
+			clError = clSetKernelArg(reduce_ocl_kernel[level], arg++, sizeof(cl_mem), &ocl_trackingResult);
+			sprintf(errStr, "clSetKernelArg%d", arg);
+			checkErr(clError, errStr);
 
-            endOfTiming = benchmark_tock();
+			endOfTiming = benchmark_tock();
 			timingsIO[6] += endOfTiming - startOfTiming;
 			timingsCustom[customIdx] = endOfTiming - startOfTiming;
 			customIdx += 1;
+			startOfTiming = endOfTiming;
 
-			reduceKernel(reductionoutput, trackingResult, computationSize,
-					localimagesize);
+			size_t RglobalWorksize[1] = { NUM_THREADS_REDUCE_KERNEL };
+			clError = clEnqueueNDRangeKernel(cmd_queues[0][0], reduce_ocl_kernel[level], 1, NULL, RglobalWorksize, NULL, 0, NULL, NULL);
+            checkErr(clError, "clEnqueueNDRangeKernel");
 
-			if (updatePoseKernel(pose, reductionoutput, icp_threshold))
-				break;
+            endOfTiming = benchmark_tock();
+            timingsCustom[customIdx] = endOfTiming - startOfTiming;
+            customIdx += 1;
+            startOfTiming = endOfTiming;
+
+            clError = clEnqueueReadBuffer(cmd_queues[0][0], ocl_reduce_output_buffer, CL_TRUE, 0, NUM_THREADS_REDUCE_KERNEL * 32 * sizeof(float), reductionoutput, 0, NULL, NULL);
+			checkErr(clError, "clEnqueueReadBuffer");
+
+			endOfTiming = benchmark_tock();
+			timingsIO[7] += endOfTiming - startOfTiming;
+            timingsCustom[customIdx] = endOfTiming - startOfTiming;
+            customIdx += 1;
+            startOfTiming = endOfTiming;
+
+			TooN::Matrix<TooN::Dynamic, TooN::Dynamic, float, TooN::Reference::RowMajor> values(reductionoutput, NUM_THREADS_REDUCE_KERNEL, 32);
+
+			for (int j = 1; j < NUM_THREADS_REDUCE_KERNEL; ++j) {
+				values[0] += values[j];
+			}
+
+			updatePoseKernelRes = updatePoseKernel(pose, reductionoutput, icp_threshold);
+			endOfTiming = benchmark_tock();
+			timingsCPU[7] += endOfTiming - startOfTiming;
+			timingsCustom[customIdx] = endOfTiming - startOfTiming;
+            customIdx += 1;
+
+			if (updatePoseKernelRes) break;
 
 		}
 	}
 	startOfTiming = benchmark_tock();
-	checkPoseKernelRes = checkPoseKernel(pose, oldPose, reductionoutput, computationSize,
-			track_threshold);
+	checkPoseKernelRes = checkPoseKernel(pose, oldPose, reductionoutput, computationSize, track_threshold);
 	endOfTiming = benchmark_tock();
 	timingsCPU[6] += endOfTiming - startOfTiming;
 	timingsCustom[customIdx] = endOfTiming - startOfTiming;
