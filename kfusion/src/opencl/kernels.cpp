@@ -1247,7 +1247,7 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 	checkPoseKernelRes = checkPoseKernel(pose, oldPose, reductionoutput, computationSize, track_threshold);
 	endOfTiming = benchmark_tock();
 	timingsCPU[6] += endOfTiming - startOfTiming;
-	*logstreamCustom << "level" << level << "_iter" << i << "_cpu1_track:" << (endOfTiming - startOfTiming) << "\t";
+	*logstreamCustom << "_cpu1_track:" << (endOfTiming - startOfTiming) << "\t";
 
 	return checkPoseKernelRes;
 
