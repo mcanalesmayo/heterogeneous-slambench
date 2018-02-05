@@ -1100,7 +1100,6 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 
     endOfTiming = benchmark_tock();
     timingsIO[6] += endOfTiming - startOfTiming;
-    timingsCustom[customIdxA] = endOfTiming - startOfTiming;
     *logstreamCustom << "writebuf0_track:" << (endOfTiming - startOfTiming) << "\t";
 
 	for (int level = iterations.size() - 1; level >= 0; --level) {
