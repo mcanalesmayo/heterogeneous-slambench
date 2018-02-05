@@ -1091,7 +1091,6 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 	timingsCPU[6] += endOfTiming - startOfTiming;
 	*logstreamCustom << "cpu0_track:" << (endOfTiming - startOfTiming) << "\t";
 	startOfTiming = endOfTiming;
-	customIdxA += 1;
 
 	bool checkPoseKernelRes, updatePoseKernelRes;
 
