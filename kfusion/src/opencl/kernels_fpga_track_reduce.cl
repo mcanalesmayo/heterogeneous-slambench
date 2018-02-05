@@ -51,7 +51,7 @@ inline float3 myrotate(const float4 M0, const float4 M1, const float4 M2, const 
 
 __attribute__((max_work_group_size(320*240)))
 __kernel void trackKernel (
-        __global __write_only TrackData * restrict output,
+        __global TrackData * restrict output,
         const uint2 outputSize,
         __global __read_only const float * restrict inVertex,// float3
         const uint2 inVertexSize,
@@ -119,7 +119,7 @@ __kernel void trackKernel (
 __attribute__((reqd_work_group_size(NUM_WI_1,1,1)))
 __kernel void reduceKernel1 (
         __global __write_only float * restrict out,
-        __global __read_only const TrackData * restrict J
+        __global const TrackData * restrict J
 ) {
     uint threadIdx = get_global_id(0);
     uint globalSize = get_global_size(0);
@@ -194,7 +194,7 @@ __kernel void reduceKernel1 (
 __attribute__((reqd_work_group_size(NUM_WI_2,1,1)))
 __kernel void reduceKernel2 (
         __global __write_only float * restrict out,
-        __global __read_only const TrackData * restrict J
+        __global const TrackData * restrict J
 ) {
     uint threadIdx = get_global_id(0);
     uint globalSize = get_global_size(0);
@@ -269,7 +269,7 @@ __kernel void reduceKernel2 (
 __attribute__((reqd_work_group_size(NUM_WI_3,1,1)))
 __kernel void reduceKernel3 (
         __global __write_only float * restrict out,
-        __global __read_only const TrackData * restrict J
+        __global const TrackData * restrict J
 ) {
     uint threadIdx = get_global_id(0);
     uint globalSize = get_global_size(0);

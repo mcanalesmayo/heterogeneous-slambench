@@ -140,17 +140,14 @@ void Kfusion::languageSpecificConstructor() {
     ocl_trackingResult = clCreateBuffer(contexts[0], CL_MEM_READ_WRITE, sizeof(TrackData) * computationSize.x * computationSize.y, NULL, &clError);
     checkErr(clError, "clCreateBuffer");
 
-    ocl_reduce_output_buffer = clCreateBuffer(contexts[0], CL_MEM_WRITE_ONLY, NUM_THREADS_REDUCE_KERNEL * 32 * sizeof(float), NULL, &clError);
+    ocl_reduce_output_buffer = clCreateBuffer(contexts[0], CL_MEM_READ_WRITE, NUM_THREADS_REDUCE_KERNEL * 32 * sizeof(float), NULL, &clError);
 	checkErr(clError, "clCreateBuffer");
 
-	if (getenv("KERNEL_timingsIO"))
+	if (getenv("KERNEL_TIMINGS"))
 		print_kernel_timing = true;
 
 	// internal buffers to initialize
-	posix_memalign((void **) &reductionoutput, 64, sizeof(float) * NUM_THREADS_REDUCE_KERNEL * 32);
-	for (uint i=0; i<NUM_THREADS_REDUCE_KERNEL*32; i++) {
-		reductionoutput[i] = 0.0f;
-	}
+	posix_memalign((void **) &reductionoutput, 64, NUM_THREADS_REDUCE_KERNEL * 32 * sizeof(float));
 
 	ScaledDepth = (float**) calloc(sizeof(float*) * iterations.size(), 1);
 	//inputVertex = (float3**) calloc(sizeof(float3*) * iterations.size(), 1);
@@ -900,7 +897,7 @@ bool updatePoseKernel(Matrix4 & pose, const float * output,
 	bool res = false;
 	TICK();
 	// Update the pose regarding the tracking result
-	TooN::Matrix<8, 32, const float, TooN::Reference::RowMajor> values(output);
+	TooN::Matrix<NUM_THREADS_REDUCE_KERNEL, 32, const float, TooN::Reference::RowMajor> values(output);
 	TooN::Vector<6> x = solve(values[0].slice<1, 27>());
 	TooN::SE3<> delta(x);
 	pose = toMatrix4(delta) * pose;
@@ -918,7 +915,7 @@ bool checkPoseKernel(Matrix4 & pose, Matrix4 oldPose, const float * output,
 
 	// Check the tracking result, and go back to the previous camera position if necessary
 
-	TooN::Matrix<8, 32, const float, TooN::Reference::RowMajor> values(output);
+	TooN::Matrix<NUM_THREADS_REDUCE_KERNEL, 32, const float, TooN::Reference::RowMajor> values(output);
 
 	if ((std::sqrt(values(0, 0) / values(0, 28)) > 2e-2)
 			|| (values(0, 28) / (imageSize.x * imageSize.y) < track_threshold)) {
