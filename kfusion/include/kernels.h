@@ -84,17 +84,17 @@ private:
 	float3 _initPose;
 	double* timingsIO;
 	double* timingsCPU;
-	double* timingsCustom;
+	std::ostream* logstreamCustom;
 
 	void raycast(uint frame, const float4& k, float mu);
 
 public:
 	Kfusion(uint2 inputSize, uint3 volumeResolution, float3 volumeDimensions,
-			float3 initPose, std::vector<int> & pyramid, double* timingsIOPtr, double* timingsCPUPtr, double* timingsCustomPtr) :
+			float3 initPose, std::vector<int> & pyramid, double* timingsIOPtr, double* timingsCPUPtr, std::ostream* logstreamCustomPtr) :
 			computationSize(make_uint2(inputSize.x, inputSize.y)) {
 		timingsIO = timingsIOPtr;
 		timingsCPU = timingsCPUPtr;
-		timingsCustom = timingsCustomPtr;
+		logstreamCustom = logstreamCustomPtr;
 
 		this->_initPose = initPose;
 		this->volumeDimensions = volumeDimensions;
@@ -115,11 +115,11 @@ public:
 	}
 	//Allow a kfusion object to be created with a pose which include orientation as well as position
 	Kfusion(uint2 inputSize, uint3 volumeResolution, float3 volumeDimensions,
-			Matrix4 initPose, std::vector<int> & pyramid, double* timingsIOPtr, double* timingsCPUPtr, double* timingsCustomPtr) :
+			Matrix4 initPose, std::vector<int> & pyramid, double* timingsIOPtr, double* timingsCPUPtr, std::ostream* logstreamCustomPtr) :
 			computationSize(make_uint2(inputSize.x, inputSize.y)) {
 		timingsIO = timingsIOPtr;
 		timingsCPU = timingsCPUPtr;
-		timingsCustom = timingsCustomPtr;
+		logstreamCustom = logstreamCustomPtr;
 
 		this->_initPose = getPosition();
 		this->volumeDimensions = volumeDimensions;

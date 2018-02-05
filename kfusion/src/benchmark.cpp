@@ -140,7 +140,7 @@ int main(int argc, char ** argv) {
 	double* timingsCustom = (double *) calloc(256, sizeof(double));
 	double startOfKernel, endOfKernel, computationTotalIO, computationTotalCPU, computationTotalCustom, overallTotalIO, overallTotalCPU, overallTotalCustom;
 	Kfusion kfusion(computationSize, config.volume_resolution,
-			config.volume_size, init_pose, config.pyramid, timingsIO, timingsCPU, timingsCustom);
+			config.volume_size, init_pose, config.pyramid, timingsIO, timingsCPU, logfilestreamCustom);
 
 	*logstreamIO
 			<< "frame\tacquisition\tpreprocess_mm2meters\tpreprocess_bilateralFilter\ttrack_halfSample\ttrack_depth2vertex\ttrack_vertex2normal"
@@ -154,12 +154,6 @@ int main(int argc, char ** argv) {
 			<< "\tcomputation\ttotal    \tX          \tY          \tZ         \ttracked   \tintegrated"
 			<< std::endl;
 	logstreamCPU->setf(std::ios::fixed, std::ios::floatfield);
-	*logstreamCustom << "frame" << "\t";
-	for (uint i=0; i<256; i++) {
-		*logstreamCustom << i << "\t";
-	}
-	*logstreamCustom << "computation\ttotal";
-	*logstreamCustom << std::endl;
 
 	logstreamCustom->setf(std::ios::fixed, std::ios::floatfield);
 
@@ -243,24 +237,6 @@ int main(int argc, char ** argv) {
 				<< xt << "\t" << yt << "\t" << zt << "\t"     //  X,Y,Z
 				<< tracked << "        \t" << integrated // tracked and integrated flags
 				<< std::endl;
-
-		// skip acquisition stage for computation measure
-		computationTotalCustom = 0.0f;
-		for(uint i=1; i<13; i++) {
-			computationTotalCustom += timingsCustom[i];
-		}
-
-		overallTotalCustom = computationTotalCustom + timingsCustom[0];
-
-		*logstreamCustom << frame << "\t";
-		for(uint i=0; i<64; i++) {
-			*logstreamCustom << timingsCustom[i] << "\t";
-		}
-
-		*logstreamCustom << computationTotalCustom << "\t"     //  computation
-			<< overallTotalCustom << "\t"     //  total
-			<< std::endl;
-
 
 		frame++;
 
