@@ -137,7 +137,7 @@ int main(int argc, char ** argv) {
 	// 13 kernels
 	double* timingsIO = (double *) malloc(13 * sizeof(double));
 	double* timingsCPU = (double *) malloc(13 * sizeof(double));
-	double* timingsCustom = (double *) calloc(64, sizeof(double));
+	double* timingsCustom = (double *) calloc(256, sizeof(double));
 	double startOfKernel, endOfKernel, computationTotalIO, computationTotalCPU, computationTotalCustom, overallTotalIO, overallTotalCPU, overallTotalCustom;
 	Kfusion kfusion(computationSize, config.volume_resolution,
 			config.volume_size, init_pose, config.pyramid, timingsIO, timingsCPU, timingsCustom);
@@ -155,7 +155,7 @@ int main(int argc, char ** argv) {
 			<< std::endl;
 	logstreamCPU->setf(std::ios::fixed, std::ios::floatfield);
 	*logstreamCustom << "frame" << "\t";
-	for (uint i=0; i<64; i++) {
+	for (uint i=0; i<256; i++) {
 		*logstreamCustom << i << "\t";
 	}
 	*logstreamCustom << "computation\ttotal";
