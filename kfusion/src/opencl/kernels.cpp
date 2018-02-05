@@ -140,7 +140,7 @@ void Kfusion::languageSpecificConstructor() {
     ocl_trackingResult = clCreateBuffer(contexts[0], CL_MEM_READ_WRITE, sizeof(TrackData) * computationSize.x * computationSize.y, NULL, &clError);
     checkErr(clError, "clCreateBuffer");
 
-    ocl_reduce_output_buffer = clCreateBuffer(contexts[0], CL_MEM_READ_WRITE, NUM_THREADS_REDUCE_KERNEL * 32 * sizeof(float), NULL, &clError);
+    ocl_reduce_output_buffer = clCreateBuffer(contexts[0], CL_MEM_WRITE_ONLY, NUM_THREADS_REDUCE_KERNEL * 32 * sizeof(float), NULL, &clError);
 	checkErr(clError, "clCreateBuffer");
 
 	if (getenv("KERNEL_TIMINGS"))
