@@ -1115,10 +1115,8 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 
 		for (int i = 0; i < iterations[level]; ++i) {
 			startOfTiming = benchmark_tock();
-
             int arg = 0;
             char errStr[20];
-
             clError = clSetKernelArg(track_ocl_kernel, arg++, sizeof(cl_mem), &ocl_trackingResult);
             sprintf(errStr, "clSetKernelArg%d", arg);
             checkErr(clError, errStr);
@@ -1179,22 +1177,18 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
             clError = clSetKernelArg(track_ocl_kernel, arg++, sizeof(cl_float), &normal_threshold);
             sprintf(errStr, "clSetKernelArg%d", arg);
             checkErr(clError, errStr);
-
             endOfTiming = benchmark_tock();
 			timingsIO[6] += endOfTiming - startOfTiming;
 			*logstreamCustom << "level" << level << "_iter" << i << "_setkernelargs_track:" << (endOfTiming - startOfTiming) << "\t";
 			
 			startOfTiming = benchmark_tock();
-
             size_t globalWorksize[2] = { localimagesize.x, localimagesize.y };
             clError = clEnqueueNDRangeKernel(cmd_queues[0][0], track_ocl_kernel, 2, NULL, globalWorksize, NULL, 0, NULL, NULL);
             checkErr(clError, "clEnqueueNDRangeKernel");
-
             endOfTiming = benchmark_tock();
             *logstreamCustom << "level" << level << "_iter" << i << "_kernel_track:" << (endOfTiming - startOfTiming) << "\t";
 
             startOfTiming = benchmark_tock();
-
 			arg = 0;
 			clError = clSetKernelArg(reduce_ocl_kernel[level], arg++, sizeof(cl_mem), &ocl_reduce_output_buffer);
 			sprintf(errStr, "clSetKernelArg%d", arg);
@@ -1202,39 +1196,37 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 			clError = clSetKernelArg(reduce_ocl_kernel[level], arg++, sizeof(cl_mem), &ocl_trackingResult);
 			sprintf(errStr, "clSetKernelArg%d", arg);
 			checkErr(clError, errStr);
-
 			endOfTiming = benchmark_tock();
-			timingsIO[7] += endOfTiming - startOfTiming;
+			timingsCPU[7] += endOfTiming - startOfTiming;
 			*logstreamCustom << "level" << level << "_iter" << i << "_setkernelargs_reduce:" << (endOfTiming - startOfTiming) << "\t";
 
 			startOfTiming = benchmark_tock();
-
 			size_t RglobalWorksize[1] = { NUM_THREADS_REDUCE_KERNEL };
 			clError = clEnqueueNDRangeKernel(cmd_queues[0][0], reduce_ocl_kernel[level], 1, NULL, RglobalWorksize, NULL, 0, NULL, NULL);
             checkErr(clError, "clEnqueueNDRangeKernel");
-
             endOfTiming = benchmark_tock();
             *logstreamCustom << "level" << level << "_iter" << i << "_kernel_reduce:" << (endOfTiming - startOfTiming) << "\t";
-            startOfTiming = benchmark_tock();
 
+            startOfTiming = benchmark_tock();
             clError = clEnqueueReadBuffer(cmd_queues[0][0], ocl_reduce_output_buffer, CL_TRUE, 0, NUM_THREADS_REDUCE_KERNEL * 32 * sizeof(float), reductionoutput, 0, NULL, NULL);
 			checkErr(clError, "clEnqueueReadBuffer");
-
 			endOfTiming = benchmark_tock();
 			timingsIO[7] += endOfTiming - startOfTiming;
 			*logstreamCustom << "level" << level << "_iter" << i << "_readbuf_reduce:" << (endOfTiming - startOfTiming) << "\t";
 
             startOfTiming = benchmark_tock();
-
 			TooN::Matrix<TooN::Dynamic, TooN::Dynamic, float, TooN::Reference::RowMajor> values(reductionoutput, NUM_THREADS_REDUCE_KERNEL, 32);
-
 			for (int j = 1; j < NUM_THREADS_REDUCE_KERNEL; ++j) {
 				values[0] += values[j];
 			}
-
-			updatePoseKernelRes = updatePoseKernel(pose, reductionoutput, icp_threshold);
 			endOfTiming = benchmark_tock();
 			timingsCPU[7] += endOfTiming - startOfTiming;
+			*logstreamCustom << "level" << level << "_iter" << i << "_cpu1_reduce:" << (endOfTiming - startOfTiming) << "\t";
+
+			startOfTiming = benchmark_tock();
+			updatePoseKernelRes = updatePoseKernel(pose, reductionoutput, icp_threshold);
+			endOfTiming = benchmark_tock();
+			timingsCPU[6] += endOfTiming - startOfTiming;
 			*logstreamCustom << "level" << level << "_iter" << i << "_cpu1_track:" << (endOfTiming - startOfTiming) << "\t";
 
 			if (updatePoseKernelRes) break;
@@ -1245,7 +1237,7 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 	checkPoseKernelRes = checkPoseKernel(pose, oldPose, reductionoutput, computationSize, track_threshold);
 	endOfTiming = benchmark_tock();
 	timingsCPU[6] += endOfTiming - startOfTiming;
-	*logstreamCustom << "_cpu1_track:" << (endOfTiming - startOfTiming) << std::endl;
+	*logstreamCustom << "cpu2_track:" << (endOfTiming - startOfTiming) << std::endl;
 
 	return checkPoseKernelRes;
 
