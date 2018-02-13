@@ -1120,7 +1120,7 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
             clError = clSetKernelArg(track_ocl_kernel, arg++, sizeof(cl_mem), &ocl_trackingResult);
             sprintf(errStr, "clSetKernelArg%d", arg);
             checkErr(clError, errStr);
-            clError = clSetKernelArg(track_ocl_kernel, arg++, sizeof(cl_uint2), &computationSize);
+            clError = clSetKernelArg(track_ocl_kernel, arg++, sizeof(cl_uint2), &localimagesize);
             sprintf(errStr, "clSetKernelArg%d", arg);
             checkErr(clError, errStr);
             clError = clSetKernelArg(track_ocl_kernel, arg++, sizeof(cl_mem), &ocl_inputVertex[level]);
