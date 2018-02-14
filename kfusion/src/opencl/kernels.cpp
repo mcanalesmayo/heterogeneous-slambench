@@ -58,7 +58,7 @@ inline double benchmark_tock() {
 	return (double) clockData.tv_sec + clockData.tv_nsec / 1000000000.0;
 }
 
-double startOfKernel, endOfKernel;
+double startOfTiming, endOfTiming;
 
 cl_kernel reduce_ocl_kernel;
 
@@ -1001,7 +1001,8 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 	oldPose = pose;
 	const Matrix4 projectReference = getCameraMatrix(k) * inverse(raycastPose);
 
-	timings[7] = 0.0f;
+	timingsIO[7] = 0.0f;
+	timingsCPU[7] = 0.0f;
 
 	for (int level = iterations.size() - 1; level >= 0; --level) {
 		uint2 localimagesize = make_uint2(
@@ -1013,11 +1014,13 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 					localimagesize, vertex, normal, computationSize, pose,
 					projectReference, dist_threshold, normal_threshold);
 
-			startOfKernel = benchmark_tock();
-
+			startOfTiming = benchmark_tock();
 			clEnqueueWriteBuffer(cmd_queues[1][0], ocl_trackingResult, CL_TRUE, 0, sizeof(TrackData) * (computationSize.x * computationSize.y), trackingResult, 0, NULL, NULL);
 			checkErr(clError, "clEnqueueReadBuffer");
+			endOfTiming = benchmark_tock();
+			timingsIO[7] += endOfTiming - startOfTiming;
 
+			startOfTiming = endOfTiming;
 			int arg = 0;
 			char errStr[20];
 			clError = clSetKernelArg(reduce_ocl_kernel, arg++, sizeof(cl_mem), &ocl_reduce_output_buffer);
@@ -1035,6 +1038,8 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
             clError = clSetKernelArg(reduce_ocl_kernel, arg++, size_of_group * 32 * sizeof(float), NULL);
             sprintf(errStr, "clSetKernelArg%d", arg);
             checkErr(clError, errStr);
+            endOfTiming = benchmark_tock();
+            timingsCPU[7] += endOfTiming - startOfTiming;
 
 			size_t RglobalWorksize[1] = { size_of_group * number_of_groups };
             size_t RlocalWorksize[1] = { size_of_group }; // Dont change it !
@@ -1042,18 +1047,22 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
             clError = clEnqueueNDRangeKernel(cmd_queues[1][0], reduce_ocl_kernel, 1, NULL, RglobalWorksize, RlocalWorksize, 0, NULL, NULL);
             checkErr(clError, "clEnqueueNDRangeKernel");
 
+            startOfTiming = benchmark_tock();
 			clError = clEnqueueReadBuffer(cmd_queues[1][0], ocl_reduce_output_buffer, CL_TRUE, 0, 32 * number_of_groups * sizeof(float), reductionoutput, 0, NULL, NULL);
 			checkErr(clError, "clEnqueueReadBuffer");
+			endOfTiming = benchmark_tock();
+			timingsIO[7] += endOfTiming - startOfTiming;
 
+			startOfTiming = endOfTiming;
 			TooN::Matrix<TooN::Dynamic, TooN::Dynamic, float, TooN::Reference::RowMajor> values(reductionoutput, number_of_groups, 32);
 
 			for (int j = 1; j < number_of_groups; ++j) {
 				values[0] += values[j];
 			}
+			endOfTiming = benchmark_tock();
+			timingsCPU[7] += endOfTiming - startOfTiming;
 
 			updatePoseKernelRes = updatePoseKernel(pose, reductionoutput, icp_threshold);
-			endOfKernel = benchmark_tock();
-			timings[7] += endOfKernel - startOfKernel;
 
 			if (updatePoseKernelRes) break;
 
