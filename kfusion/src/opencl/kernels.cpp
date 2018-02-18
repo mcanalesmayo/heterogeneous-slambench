@@ -58,7 +58,6 @@ cl_mem ocl_output_render_buffer = NULL; // Common buffer for rendering track, de
 
 // intra-frame
 cl_mem ocl_reduce_output_buffer = NULL;
-cl_mem ocl_trackingResult_GPU = NULL;
 cl_mem ocl_trackingResult_FPGA = NULL;
 cl_mem ocl_FloatDepth = NULL;
 cl_mem * ocl_ScaledDepth = NULL;
@@ -80,7 +79,6 @@ cl_kernel integrate_ocl_kernel;
 cl_kernel raycast_ocl_kernel;
 cl_kernel renderVolume_ocl_kernel;
 cl_kernel renderLight_ocl_kernel;
-cl_kernel renderTrack_ocl_kernel;
 cl_kernel renderDepth_ocl_kernel;
 cl_kernel initVolume_ocl_kernel;
 
@@ -146,8 +144,6 @@ void Kfusion::languageSpecificConstructor() {
 	ocl_vertex_FPGA = clCreateBuffer(contexts[0], CL_MEM_READ_ONLY, sizeof(float3) * computationSize.x * computationSize.y, NULL, &clError);
 	checkErr(clError, "clCreateBuffer");
 	ocl_normal_FPGA = clCreateBuffer(contexts[0], CL_MEM_READ_ONLY, sizeof(float3) * computationSize.x * computationSize.y, NULL, &clError);
-	checkErr(clError, "clCreateBuffer");
-	ocl_trackingResult_GPU = clCreateBuffer(contexts[1], CL_MEM_READ_ONLY, sizeof(TrackData) * computationSize.x * computationSize.y, NULL, &clError);
 	checkErr(clError, "clCreateBuffer");
 	ocl_trackingResult_FPGA = clCreateBuffer(contexts[0], CL_MEM_READ_WRITE, sizeof(TrackData) * computationSize.x * computationSize.y, NULL, &clError);
 	checkErr(clError, "clCreateBuffer");
@@ -250,8 +246,6 @@ void Kfusion::languageSpecificConstructor() {
 	checkErr(clError, "clCreateKernel");
 	renderDepth_ocl_kernel = clCreateKernel(programs[1], "renderDepthKernel", &clError);
 	checkErr(clError, "clCreateKernel");
-	renderTrack_ocl_kernel = clCreateKernel(programs[1], "renderTrackKernel", &clError);
-	checkErr(clError, "clCreateKernel");
 
 }
 Kfusion::~Kfusion() {
@@ -341,11 +335,6 @@ Kfusion::~Kfusion() {
 	  	checkErr(clError, "clReleaseMem");
 		ocl_normal_FPGA = NULL;
 	}
-	if (ocl_trackingResult_GPU) {
-	 	clError = clReleaseMemObject(ocl_trackingResult_GPU);
-		checkErr(clError, "clReleaseMem");
-		ocl_trackingResult_GPU = NULL;
-	}
 	if (ocl_trackingResult_FPGA) {
 	 	clError = clReleaseMemObject(ocl_trackingResult_FPGA);
 		checkErr(clError, "clReleaseMem");
@@ -390,7 +379,6 @@ Kfusion::~Kfusion() {
 	RELEASE_KERNEL(raycast_ocl_kernel);
 	RELEASE_KERNEL(renderVolume_ocl_kernel);
 	RELEASE_KERNEL(renderDepth_ocl_kernel);
-	RELEASE_KERNEL(renderTrack_ocl_kernel);
 	RELEASE_KERNEL(initVolume_ocl_kernel);
 
 	mm2meters_ocl_kernel = NULL ;
@@ -403,7 +391,6 @@ Kfusion::~Kfusion() {
 	raycast_ocl_kernel = NULL;
 	renderVolume_ocl_kernel = NULL;
 	renderLight_ocl_kernel = NULL;
-	renderTrack_ocl_kernel = NULL;
 	renderDepth_ocl_kernel = NULL;
 
 	computationSizeBkp = make_uint2(0, 0);
@@ -783,12 +770,12 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate, uint f
 	startOfTiming = endOfTiming;
 	clError = clEnqueueReadBuffer(cmd_queues[0][0], ocl_trackingResult_FPGA, CL_TRUE, 0, sizeof(TrackData) * (computationSize.x * computationSize.y), trackingResult, 0, NULL, NULL);
 	checkErr(clError, "clEnqueueReadBuffer");
-	clError = clEnqueueWriteBuffer(cmd_queues[1][0], ocl_trackingResult_GPU, CL_TRUE, 0, sizeof(TrackData) * (computationSize.x * computationSize.y), trackingResult, 0, NULL, NULL);
-	checkErr(clError, "clEnqueueWriteBuffer");
 	timingsIO[6] += endOfTiming - startOfTiming;
 
-	*logstreamCustom << "track:" << (timingsCPU[6] + timingsIO[6]) << std::endl;
-	*logstreamCustom << "reduce:" << (timingsCPU[7] + timingsIO[7]) << std::endl;
+	*logstreamCustom << "track_IO:" << (timingsIO[6]) << std::endl;
+	*logstreamCustom << "track_Kernel:" << (timingsCPU[6]) << std::endl;
+	*logstreamCustom << "reduce_IO:" << (timingsIO[7]) << std::endl;
+	*logstreamCustom << "reduce_Kernel:" << (timingsCPU[7]) << std::endl;
 
 	return checkPoseKernelRes;
 }
@@ -991,31 +978,35 @@ void Kfusion::renderDepth(uchar4 * out, uint2 outputSize) {
 void Kfusion::renderTrack(uchar4 * out, uint2 outputSize) {
 	startOfTiming = benchmark_tock();
 
-    // Create render opencl buffer if needed
-    if(outputImageSizeBkp.x < outputSize.x || outputImageSizeBkp.y < outputSize.y || ocl_output_render_buffer == NULL) 
-    {
-		outputImageSizeBkp = make_uint2(outputSize.x, outputSize.y);
-		if(ocl_output_render_buffer != NULL){
-		    std::cout << "Release" << std::endl;
-		    clError = clReleaseMemObject(ocl_output_render_buffer);
-		    checkErr(clError, "clReleaseMemObject");
-		}
-		ocl_output_render_buffer = clCreateBuffer(contexts[1], CL_MEM_WRITE_ONLY, outputSize.x * outputSize.y * sizeof(uchar4), NULL , &clError);
-		checkErr(clError, "clCreateBuffer output" );
-    }
-
-	// set param and run kernel
-	clError = clSetKernelArg(renderTrack_ocl_kernel, 0, sizeof(cl_mem), &ocl_output_render_buffer);
-	clError &= clSetKernelArg(renderTrack_ocl_kernel, 1, sizeof(cl_mem), &ocl_trackingResult_GPU);
-	checkErr(clError, "clSetKernelArg");
-
-	size_t globalWorksize[2] = { computationSize.x, computationSize.y };
-
-	clError = clEnqueueNDRangeKernel(cmd_queues[1][0], renderTrack_ocl_kernel, 2, NULL, globalWorksize, NULL, 0, NULL, NULL);
-	checkErr(clError, "clEnqueueNDRangeKernel");
-
-    clError = clEnqueueReadBuffer(cmd_queues[1][0], ocl_output_render_buffer, CL_FALSE, 0, outputSize.x * outputSize.y * sizeof(uchar4), out, 0, NULL, NULL );  
-    checkErr(clError, "clEnqueueReadBuffer");
+    unsigned int y;
+	#pragma omp parallel for shared(out), private(y)
+		for (y = 0; y < computationSize.y; y++)
+			for (unsigned int x = 0; x < computationSize.x; x++) {
+				uint pos = x + y * computationSize.x;
+				switch (trackingResult[pos].result) {
+				case 1:
+					out[pos] = make_uchar4(128, 128, 128, 0);  // ok	 GREY
+					break;
+				case -1:
+					out[pos] = make_uchar4(0, 0, 0, 0);      // no input BLACK
+					break;
+				case -2:
+					out[pos] = make_uchar4(255, 0, 0, 0);        // not in image RED
+					break;
+				case -3:
+					out[pos] = make_uchar4(0, 255, 0, 0);    // no correspondence GREEN
+					break;
+				case -4:
+					out[pos] = make_uchar4(0, 0, 255, 0);        // to far away BLUE
+					break;
+				case -5:
+					out[pos] = make_uchar4(255, 255, 0, 0);     // wrong normal YELLOW
+					break;
+				default:
+					out[pos] = make_uchar4(255, 128, 128, 0);
+					break;
+				}
+	}
 
     endOfTiming = benchmark_tock();
 	timingsCPU[11] = endOfTiming - startOfTiming;
