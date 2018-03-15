@@ -360,7 +360,7 @@ bool Kfusion::preprocessing(const uint16_t * inputDepth, const uint2 inSize) {
 	checkErr(clError, "clEnqueueNDRangeKernel");
 
 	endOfKernel = benchmark_tock();
-	timings[1] = endOfKernel - startOfKernel;
+	timingsCPU[1] = endOfKernel - startOfKernel;
 
 	startOfKernel = endOfKernel;
 
@@ -386,7 +386,7 @@ bool Kfusion::preprocessing(const uint16_t * inputDepth, const uint2 inSize) {
 	checkErr(clError, "clEnqueueNDRangeKernel");
 
 	endOfKernel = benchmark_tock();
-	timings[2] = endOfKernel - startOfKernel;
+	timingsCPU[2] = endOfKernel - startOfKernel;
 
 	return true;
 
@@ -437,13 +437,13 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate, uint f
 	}
 
 	endOfKernel = benchmark_tock();
-	timings[3] = endOfKernel - startOfKernel;
+	timingsCPU[3] = endOfKernel - startOfKernel;
 
 	// prepare the 3D information from the input depth maps
 	uint2 localimagesize = computationSize;
 
-	timings[4] = 0.0f;
-	timings[5] = 0.0f;
+	timingsCPU[4] = 0.0f;
+	timingsCPU[5] = 0.0f;
 	for (unsigned int i = 0; i < iterations.size(); ++i) {
 		startOfKernel = endOfKernel;
 
@@ -475,7 +475,7 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate, uint f
 		checkErr(clError, "clEnqueueNDRangeKernel");
 
 		endOfKernel = benchmark_tock();
-		timings[4] += endOfKernel - startOfKernel;
+		timingsCPU[4] += endOfKernel - startOfKernel;
 
 		startOfKernel = endOfKernel;
 
@@ -501,11 +501,11 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate, uint f
 		localimagesize = make_uint2(localimagesize.x / 2, localimagesize.y / 2);
 
 		endOfKernel = benchmark_tock();
-		timings[5] += endOfKernel - startOfKernel;
+		timingsCPU[5] += endOfKernel - startOfKernel;
 	}
 
-	timings[6] = 0.0f;
-	timings[7] = 0.0f;
+	timingsCPU[6] = 0.0f;
+	timingsCPU[7] = 0.0f;
 	startOfKernel = endOfKernel;
 
 	oldPose = pose;
@@ -567,7 +567,7 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate, uint f
 			checkErr(clError, "clEnqueueNDRangeKernel");
 
 			endOfKernel = benchmark_tock();
-			timings[6] += endOfKernel - startOfKernel;
+			timingsCPU[6] += endOfKernel - startOfKernel;
 
 			startOfKernel = endOfKernel;
 
@@ -605,7 +605,7 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate, uint f
 
 			updatePoseKernelRes = updatePoseKernel(pose, reduceOutputBuffer, icp_threshold);
 			endOfKernel = benchmark_tock();
-			timings[7] += endOfKernel - startOfKernel;
+			timingsCPU[7] += endOfKernel - startOfKernel;
 
 			startOfKernel = endOfKernel;
 
@@ -615,7 +615,7 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate, uint f
 
 	checkPoseKernelRes = checkPoseKernel(pose, oldPose, reduceOutputBuffer, computationSize, track_threshold);
 	endOfKernel = benchmark_tock();
-	timings[6] += endOfKernel - startOfKernel;
+	timingsCPU[6] += endOfKernel - startOfKernel;
 
 	return checkPoseKernelRes;
 }
@@ -705,7 +705,7 @@ bool Kfusion::integration(float4 k, uint integration_rate, float mu, uint frame)
 	}
 
 	endOfKernel = benchmark_tock();
-	timings[8] = endOfKernel - startOfKernel;
+	timingsCPU[8] = endOfKernel - startOfKernel;
 
 	return doIntegrate;
 }
@@ -763,7 +763,7 @@ bool Kfusion::raycasting(float4 k, float mu, uint frame) {
 	}
 
 	endOfKernel = benchmark_tock();
-	timings[9] = endOfKernel - startOfKernel;
+	timingsCPU[9] = endOfKernel - startOfKernel;
 
 	return doRaycast;
 }
@@ -801,7 +801,7 @@ void Kfusion::renderDepth(uchar4 * out, uint2 outputSize) {
     checkErr( clError, "clEnqueueReadBuffer");
 
     endOfKernel = benchmark_tock();
-	timings[10] = endOfKernel - startOfKernel;
+	timingsCPU[10] = endOfKernel - startOfKernel;
 }
 
 void Kfusion::renderTrack(uchar4 * out, uint2 outputSize) {
@@ -834,7 +834,7 @@ void Kfusion::renderTrack(uchar4 * out, uint2 outputSize) {
     checkErr(clError, "clEnqueueReadBuffer");
 
     endOfKernel = benchmark_tock();
-	timings[11] = endOfKernel - startOfKernel;
+	timingsCPU[11] = endOfKernel - startOfKernel;
 }
 
 void Kfusion::renderVolume(uchar4 * out, uint2 outputSize, int frame, int rate, float4 k, float largestep) {
@@ -901,7 +901,7 @@ void Kfusion::renderVolume(uchar4 * out, uint2 outputSize, int frame, int rate, 
     checkErr(clError, "clEnqueueReadBuffer");
 
     endOfKernel = benchmark_tock();
-	timings[12] = endOfKernel - startOfKernel;
+	timingsCPU[12] = endOfKernel - startOfKernel;
 }
 
 void Kfusion::dumpVolume(const char* filename) {
