@@ -18,8 +18,8 @@ typedef struct sTrackData {
 } TrackData;
 
 __kernel void reduceKernel (
-		__global float * out,
-		__global const TrackData * J,
+		__global float * restrict out,
+		__global const TrackData * restrict J,
 		const uint2 JSize,
 		const uint2 size,
 		__local float * S

@@ -17,7 +17,7 @@
 #define STR(x) XSTR(x)
 
 #ifndef AOCX_PATH
-#define AOCX_PATH "/home/mcanales/heterogeneous-slambench/kfusion/src/opencl/kernels_fpga_reduce_16.1"
+#define AOCX_PATH "/home/root/heterogeneous-slambench/kfusion/src/opencl/kernels_fpga_reduce"
 #endif
 
 cl_int             clError;
