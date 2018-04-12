@@ -21,80 +21,76 @@ __kernel void reduceKernel (
 		__global float * restrict out,
 		__global const TrackData * restrict J,
 		const uint2 JSize,
-		const uint2 size,
-		__local float * S
+		const uint2 size
 ) {
-
-	uint blockIdx = get_group_id(0);
-	uint blockDim = get_local_size(0);
-	uint threadIdx = get_local_id(0);
-	uint gridDim = get_num_groups(0);
-
-	const uint sline = threadIdx;
+	uint threadIdx = get_global_id(0);
+	uint globalSize = get_global_size(0);
+	uint batchSize = (JSize.y * JSize.x) / globalSize;
 
 	float sums[32];
-	float * jtj = sums + 7;
-	float * info = sums + 28;
 
-	for(uint i = 0; i < 32; ++i)
-	sums[i] = 0.0f;
+	uint i, k;
 
-	for(uint y = blockIdx; y < size.y; y += gridDim) {
-		for(uint x = sline; x < size.x; x += blockDim ) {
-			const TrackData row = J[x + y * JSize.x];
-			if(row.result < 1) {
-				info[1] += row.result == -4 ? 1 : 0;
-				info[2] += row.result == -5 ? 1 : 0;
-				info[3] += row.result > -4 ? 1 : 0;
-				continue;
+	#pragma unroll
+	for(i = 0; i < 32; ++i) {
+		sums[i] = 0.0f;
+	}
+
+	for(i = 0; i < batchSize; i++) {
+		const TrackData row = J[threadIdx + i*globalSize];
+		if(row.result < 1) {
+			if (row.result == -4) {
+				sums[29] += 1;
+			} else if (row.result == -5) {
+				sums[30] += 1;
+			} else if (row.result > -4) {
+				sums[31] += 1;
 			}
-
+		} else {
 			// Error part
-			sums[0] += row.error * row.error;
+			//sums[0] += row.error * row.error;
+			sums[0] = mad(row.error, row.error, sums[0]);
 
 			// JTe part
-			for(int i = 0; i < 6; ++i)
-			sums[i+1] += row.error * row.J[i];
+			#pragma unroll
+			for(k = 0; k < 6; ++k) {
+				sums[k+1] = mad(row.error, row.J[k], sums[k+1]);
+			}
 
-			jtj[0] += row.J[0] * row.J[0];
-			jtj[1] += row.J[0] * row.J[1];
-			jtj[2] += row.J[0] * row.J[2];
-			jtj[3] += row.J[0] * row.J[3];
-			jtj[4] += row.J[0] * row.J[4];
-			jtj[5] += row.J[0] * row.J[5];
+			sums[7] = mad(row.J[0], row.J[0], sums[7]);
+			sums[8] = mad(row.J[0], row.J[1], sums[8]);
+			sums[9] = mad(row.J[0], row.J[2], sums[9]);
+			sums[10] = mad(row.J[0], row.J[3], sums[10]);
+			sums[11] = mad(row.J[0], row.J[4], sums[11]);
+			sums[12] = mad(row.J[0], row.J[5], sums[12]);
 
-			jtj[6] += row.J[1] * row.J[1];
-			jtj[7] += row.J[1] * row.J[2];
-			jtj[8] += row.J[1] * row.J[3];
-			jtj[9] += row.J[1] * row.J[4];
-			jtj[10] += row.J[1] * row.J[5];
+			sums[13] = mad(row.J[1], row.J[1], sums[13]);
+			sums[14] = mad(row.J[1], row.J[2], sums[14]);
+			sums[15] = mad(row.J[1], row.J[3], sums[15]);
+			sums[16] = mad(row.J[1], row.J[4], sums[16]);
+			sums[17] = mad(row.J[1], row.J[5], sums[17]);
 
-			jtj[11] += row.J[2] * row.J[2];
-			jtj[12] += row.J[2] * row.J[3];
-			jtj[13] += row.J[2] * row.J[4];
-			jtj[14] += row.J[2] * row.J[5];
+			sums[18] = mad(row.J[2], row.J[2], sums[18]);
+			sums[19] = mad(row.J[2], row.J[3], sums[19]);
+			sums[20] = mad(row.J[2], row.J[4], sums[20]);
+			sums[21] = mad(row.J[2], row.J[5], sums[21]);
 
-			jtj[15] += row.J[3] * row.J[3];
-			jtj[16] += row.J[3] * row.J[4];
-			jtj[17] += row.J[3] * row.J[5];
+			sums[22] = mad(row.J[3], row.J[3], sums[22]);
+			sums[23] = mad(row.J[3], row.J[4], sums[23]);
+			sums[24] = mad(row.J[3], row.J[5], sums[24]);
 
-			jtj[18] += row.J[4] * row.J[4];
-			jtj[19] += row.J[4] * row.J[5];
+			sums[25] = mad(row.J[4], row.J[4], sums[25]);
+			sums[26] = mad(row.J[4], row.J[5], sums[26]);
 
-			jtj[20] += row.J[5] * row.J[5];
+			sums[27] = mad(row.J[5], row.J[5], sums[27]);
+			
 			// extra info here
-			info[0] += 1;
+			sums[28] += 1;
 		}
 	}
 
-	for(int i = 0; i < 32; ++i) // copy over to shared memory
-	S[sline * 32 + i] = sums[i];
-
-	barrier(CLK_LOCAL_MEM_FENCE);
-
-	if(sline < 32) { // sum up columns and copy to global memory in the final 32 threads
-		for(unsigned i = 1; i < blockDim; ++i)
-		S[sline] += S[i * 32 + sline];
-		out[sline+blockIdx*32] = S[sline];
+	#pragma unroll
+	for(i = 0; i < 32; i++) {
+		out[i+threadIdx*32] = sums[i];
 	}
 }

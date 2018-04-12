@@ -1046,9 +1046,6 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 			clError = clSetKernelArg(reduce_ocl_kernel, arg++, sizeof(cl_uint2), &localimagesize);
 			sprintf(errStr, "clSetKernelArg%d", arg);
 			checkErr(clError, errStr);
-            clError = clSetKernelArg(reduce_ocl_kernel, arg++, size_of_group * 32 * sizeof(float), NULL);
-            sprintf(errStr, "clSetKernelArg%d", arg);
-            checkErr(clError, errStr);
             endOfTiming = benchmark_tock();
 			timingsCPU[7] += endOfTiming - startOfTiming;
 
