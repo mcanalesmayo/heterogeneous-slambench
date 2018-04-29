@@ -27,7 +27,7 @@
 // #include <thread>
 // #include <omp.h>
 
-inline double tock() {
+inline double benchmark_tock() {
 	synchroniseDevices();
 #ifdef __APPLE__
 		clock_serv_t cclock;
@@ -54,8 +54,12 @@ int main(int argc, char ** argv) {
 
 	// ========= CHECK ARGS =====================
 
-	std::ostream* logstream = &std::cout;
-	std::ofstream logfilestream;
+	std::ostream* logstreamIO = &std::cout;
+	std::ostream* logstreamCPU = &std::cout;
+	std::ostream* logstreamCustom = &std::cout;
+	std::ofstream logfilestreamIO;
+	std::ofstream logfilestreamCPU;
+	std::ofstream logfilestreamCustom;
 	assert(config.compute_size_ratio > 0);
 	assert(config.integration_rate > 0);
 	assert(config.volume_size.x > 0);
@@ -68,8 +72,16 @@ int main(int argc, char ** argv) {
 	// }
 
 	if (config.log_file != "") {
-		logfilestream.open(config.log_file.c_str());
-		logstream = &logfilestream;
+		logfilestreamIO.open(config.log_file.c_str());
+		logstreamIO = &logfilestreamIO;
+	}
+	if (config.log_file_cpu != "") {
+		logfilestreamCPU.open(config.log_file_cpu.c_str());
+		logstreamCPU = &logfilestreamCPU;
+	}
+	if (config.log_file_custom != "") {
+		logfilestreamCustom.open(config.log_file_custom.c_str());
+		logstreamCustom = &logfilestreamCustom;
 	}
 	if (config.input_file == "") {
 		std::cerr << "No input found." << std::endl;
@@ -122,17 +134,30 @@ int main(int argc, char ** argv) {
 
 	uint frame = 0;
 
+	// 13 kernels
+	double* timingsIO = (double *) malloc(13 * sizeof(double));
+	double* timingsCPU = (double *) malloc(13 * sizeof(double));
+	double* timingsCustom = (double *) calloc(256, sizeof(double));
+	double startOfKernel, endOfKernel, computationTotalIO, computationTotalCPU, computationTotalCustom, overallTotalIO, overallTotalCPU, overallTotalCustom;
 	Kfusion kfusion(computationSize, config.volume_resolution,
-			config.volume_size, init_pose, config.pyramid);
+			config.volume_size, init_pose, config.pyramid, timingsIO, timingsCPU, logstreamCustom);
 
-	double timings[7];
-	timings[0] = tock();
-
-	*logstream
-			<< "frame\tacquisition\tpreprocessing\ttracking\tintegration\traycasting\trendering\tcomputation\ttotal    \tX          \tY          \tZ         \ttracked   \tintegrated"
+	*logstreamIO
+			<< "frame\tacquisition\tpreprocess_mm2meters\tpreprocess_bilateralFilter\ttrack_halfSample\ttrack_depth2vertex\ttrack_vertex2normal"
+			<< "\ttrack_track\ttrack_reduce\tintegrate\traycast\trenderDepth\trenderTrack\trenderVolume"
+			<< "\tcomputation\ttotal    \tX          \tY          \tZ         \ttracked   \tintegrated"
 			<< std::endl;
-	logstream->setf(std::ios::fixed, std::ios::floatfield);
+	logstreamIO->setf(std::ios::fixed, std::ios::floatfield);
+	*logstreamCPU
+			<< "frame\tacquisition\tpreprocess_mm2meters\tpreprocess_bilateralFilter\ttrack_halfSample\ttrack_depth2vertex\ttrack_vertex2normal"
+			<< "\ttrack_track\ttrack_reduce\tintegrate\traycast\trenderDepth\trenderTrack\trenderVolume"
+			<< "\tcomputation\ttotal    \tX          \tY          \tZ         \ttracked   \tintegrated"
+			<< std::endl;
+	logstreamCPU->setf(std::ios::fixed, std::ios::floatfield);
 
+	logstreamCustom->setf(std::ios::fixed, std::ios::floatfield);
+
+	startOfKernel = benchmark_tock();
 	while (reader->readNextDepthFrame(inputDepth)) {
 
 		Matrix4 pose = kfusion.getPose();
@@ -141,48 +166,81 @@ int main(int argc, char ** argv) {
 		float yt = pose.data[1].w - init_pose.y;
 		float zt = pose.data[2].w - init_pose.z;
 
-		timings[1] = tock();
+		endOfKernel = benchmark_tock();
+		timingsIO[0] = endOfKernel - startOfKernel;
 
 		kfusion.preprocessing(inputDepth, inputSize);
-
-		timings[2] = tock();
 
 		bool tracked = kfusion.tracking(camera, config.icp_threshold,
 				config.tracking_rate, frame);
 
-		timings[3] = tock();
-
 		bool integrated = kfusion.integration(camera, config.integration_rate,
 				config.mu, frame);
 
-		timings[4] = tock();
-
 		bool raycast = kfusion.raycasting(camera, config.mu, frame);
-
-		timings[5] = tock();
 
 		kfusion.renderDepth(depthRender, computationSize);
 		kfusion.renderTrack(trackRender, computationSize);
 		kfusion.renderVolume(volumeRender, computationSize, frame,
 				config.rendering_rate, camera, 0.75 * config.mu);
 
-		timings[6] = tock();
+		// skip acquisition stage for computation measure
+		computationTotalIO = 0.0f;
+		for(uint i=1; i<13; i++) {
+			computationTotalIO += timingsIO[i];
+		}
 
-		*logstream << frame << "\t" << timings[1] - timings[0] << "\t" //  acquisition
-				<< timings[2] - timings[1] << "\t"     //  preprocessing
-				<< timings[3] - timings[2] << "\t"     //  tracking
-				<< timings[4] - timings[3] << "\t"     //  integration
-				<< timings[5] - timings[4] << "\t"     //  raycasting
-				<< timings[6] - timings[5] << "\t"     //  rendering
-				<< timings[5] - timings[1] << "\t"     //  computation
-				<< timings[6] - timings[0] << "\t"     //  total
+		overallTotalIO = computationTotalIO + timingsIO[0];
+
+		*logstreamIO << frame << "\t" << timingsIO[0] << "\t" //  acquisition
+				<< timingsIO[1] << "\t"     //  preprocessing --> mm2meters
+				<< timingsIO[2] << "\t"     //  preprocessing --> bilateralFilter
+				<< timingsIO[3] << "\t"     //  tracking --> halfSample
+				<< timingsIO[4] << "\t"     //  tracking --> depth2vertex
+				<< timingsIO[5] << "\t"     //  tracking --> vertex2normal
+				<< timingsIO[6] << "\t"     //  tracking --> track
+				<< timingsIO[7] << "\t"     //  tracking --> reduce
+				<< timingsIO[8] << "\t"     //  integration --> integrate
+				<< timingsIO[9] << "\t"     //  raycasting --> raycast
+				<< timingsIO[10] << "\t"     //  rendering --> renderDepth
+				<< timingsIO[11] << "\t"     //  rendering --> renderTrack
+				<< timingsIO[12] << "\t"     //  rendering --> renderVolume
+				<< computationTotalIO << "\t"     //  computation
+				<< overallTotalIO << "\t"     //  total
+				<< xt << "\t" << yt << "\t" << zt << "\t"     //  X,Y,Z
+				<< tracked << "        \t" << integrated // tracked and integrated flags
+				<< std::endl;
+
+		// skip acquisition stage for computation measure
+		computationTotalCPU = 0.0f;
+		for(uint i=1; i<13; i++) {
+			computationTotalCPU += timingsCPU[i];
+		}
+
+		overallTotalCPU = computationTotalCPU + timingsCPU[0];
+
+		*logstreamCPU << frame << "\t" << timingsCPU[0] << "\t" //  acquisition
+				<< timingsCPU[1] << "\t"     //  preprocessing --> mm2meters
+				<< timingsCPU[2] << "\t"     //  preprocessing --> bilateralFilter
+				<< timingsCPU[3] << "\t"     //  tracking --> halfSample
+				<< timingsCPU[4] << "\t"     //  tracking --> depth2vertex
+				<< timingsCPU[5] << "\t"     //  tracking --> vertex2normal
+				<< timingsCPU[6] << "\t"     //  tracking --> track
+				<< timingsCPU[7] << "\t"     //  tracking --> reduce
+				<< timingsCPU[8] << "\t"     //  integration --> integrate
+				<< timingsCPU[9] << "\t"     //  raycasting --> raycast
+				<< timingsCPU[10] << "\t"     //  rendering --> renderDepth
+				<< timingsCPU[11] << "\t"     //  rendering --> renderTrack
+				<< timingsCPU[12] << "\t"     //  rendering --> renderVolume
+				<< computationTotalCPU << "\t"     //  computation
+				<< overallTotalCPU << "\t"     //  total
 				<< xt << "\t" << yt << "\t" << zt << "\t"     //  X,Y,Z
 				<< tracked << "        \t" << integrated // tracked and integrated flags
 				<< std::endl;
 
 		frame++;
 
-		timings[0] = tock();
+		startOfKernel = benchmark_tock();
 	}
 	// ==========     DUMP VOLUME      =========
 
@@ -192,6 +250,9 @@ int main(int argc, char ** argv) {
 
 	//  =========  FREE BASIC BUFFERS  =========
 
+	free(timingsIO);
+	free(timingsCPU);
+	free(timingsCustom);
 	free(inputDepth);
 	free(depthRender);
 	free(trackRender);

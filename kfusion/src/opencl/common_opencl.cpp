@@ -92,7 +92,7 @@ int opencl_init(void) {
     /* FPGA */
     /* ---- */
 
-    // Intel Altera is idx=2
+    // Intel Altera is idx=0
     // cl_context_properties:
     // Specifies a list of context property names and their corresponding values. Each property name is immediately followed by the corresponding desired value.
     // The list is terminated with 0. properties can be NULL in which case the platform that is selected is implementation-defined.
@@ -102,6 +102,7 @@ int opencl_init(void) {
     contexts[0] = clCreateContextFromType(ctxprop_fpga, CL_DEVICE_TYPE_ACCELERATOR, NULL, NULL, &clError);
     if(!contexts[0]) {
         printf("ERROR: clCreateContextFromType(%s) failed\n", "FPGA");
+        printf("clError: %d\n", clError);
         return -1;
     }
 
