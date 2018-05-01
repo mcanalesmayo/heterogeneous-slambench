@@ -63,20 +63,20 @@ livingRoom%.gt.freiburg :
 %.cpp.log  :  living_room_traj%_loop.raw livingRoom%.gt.freiburg
 	$(MAKE) -C build  $(MFLAGS) kfusion-benchmark-cpp
 	KERNEL_TIMINGS=1 ./build/kfusion/kfusion-benchmark-cpp $($(*F)) -i  living_room_traj$(*F)_loop.raw -o  benchmark_io.$@ -a benchmark_cpu.$@ -e benchmark_custom.$@ -d volume.$@ 2> kernels.$@
-	./kfusion/thirdparty/checkPos.py benchmark_io.$@ benchmark_cpu.$@  livingRoom$(*F).gt.freiburg ${TIMESTAMP} ${COMMIT_HASH} ${ROOT_DIR}/$@.pos.csv > resume.$@
+	./kfusion/thirdparty/checkPos.py benchmark_io.$@ benchmark_cpu.$@  livingRoom$(*F).gt.freiburg ${TIMESTAMP} ${COMMIT_HASH} ${ROOT_DIR}/$@.pos.csv ${ROOT_DIR}/$@.pos_cpu.csv > resume.$@
 	./kfusion/thirdparty/checkKernels.py kernels.$@ ${TIMESTAMP} ${COMMIT_HASH} ${ROOT_DIR}/$@.kernels.csv >> resume.$@
 
 %.openmp.log  :  living_room_traj%_loop.raw livingRoom%.gt.freiburg
 	$(MAKE) -C build $(MFLAGS) kfusion-benchmark-openmp
 	KERNEL_TIMINGS=1 OMP=1 ./build/kfusion/kfusion-benchmark-openmp $($(*F)) -i  living_room_traj$(*F)_loop.raw -o  benchmark_io.$@ -a benchmark_cpu.$@ -e benchmark_custom.$@ -d volume.$@ 2> kernels.$@
-	./kfusion/thirdparty/checkPos.py benchmark_io.$@ benchmark_cpu.$@  livingRoom$(*F).gt.freiburg ${TIMESTAMP} ${COMMIT_HASH} ${ROOT_DIR}/$@.pos.csv > resume.$@
+	./kfusion/thirdparty/checkPos.py benchmark_io.$@ benchmark_cpu.$@  livingRoom$(*F).gt.freiburg ${TIMESTAMP} ${COMMIT_HASH} ${ROOT_DIR}/$@.pos.csv ${ROOT_DIR}/$@.pos_cpu.csv > resume.$@
 	./kfusion/thirdparty/checkKernels.py kernels.$@ ${TIMESTAMP} ${COMMIT_HASH} ${ROOT_DIR}/$@.kernels.csv >> resume.$@
 
 %.cuda.log  : living_room_traj%_loop.raw livingRoom%.gt.freiburg
 	$(MAKE) -C build  $(MFLAGS) kfusion-benchmark-cuda
 	nvprof --print-gpu-trace ./build/kfusion/kfusion-benchmark-cuda $($(*F)) -i  living_room_traj$(*F)_loop.raw -o  benchmark_io.$@ -a benchmark_cpu.$@ -e benchmark_custom.$@ -d volume.$@ 2> nvprof.$@ || true
 	cat  nvprof.$@ | kfusion/thirdparty/nvprof2log.py >   kernels.$@
-	./kfusion/thirdparty/checkPos.py benchmark_io.$@ benchmark_cpu.$@  livingRoom$(*F).gt.freiburg ${TIMESTAMP} ${COMMIT_HASH} ${ROOT_DIR}/$@.pos.csv > resume.$@
+	./kfusion/thirdparty/checkPos.py benchmark_io.$@ benchmark_cpu.$@  livingRoom$(*F).gt.freiburg ${TIMESTAMP} ${COMMIT_HASH} ${ROOT_DIR}/$@.pos.csv ${ROOT_DIR}/$@.pos_cpu.csv > resume.$@
 	./kfusion/thirdparty/checkKernels.py kernels.$@ ${TIMESTAMP} ${COMMIT_HASH} ${ROOT_DIR}/$@.kernels.csv >> resume.$@
 
 

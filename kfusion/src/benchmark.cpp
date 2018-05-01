@@ -135,8 +135,8 @@ int main(int argc, char ** argv) {
 	uint frame = 0;
 
 	// 13 kernels
-	double* timingsIO = (double *) malloc(13 * sizeof(double));
-	double* timingsCPU = (double *) malloc(13 * sizeof(double));
+	double* timingsIO = (double *) calloc(13, sizeof(double));
+	double* timingsCPU = (double *) calloc(13, sizeof(double));
 	double* timingsCustom = (double *) calloc(256, sizeof(double));
 	double startOfKernel, endOfKernel, computationTotalIO, computationTotalCPU, computationTotalCustom, overallTotalIO, overallTotalCPU, overallTotalCustom;
 	Kfusion kfusion(computationSize, config.volume_resolution,
