@@ -149,10 +149,6 @@ int opencl_init(void) {
         return -1;
     }
 
-    cl_ulong maxMem;
-    clGetDeviceInfo(device_lists[0][0], CL_DEVICE_MAX_MEM_ALLOC_SIZE, sizeof(cl_ulong), &maxMem, NULL);
-    printf("CL_DEVICE_MAX_MEM_ALLOC_SIZE: %lu\n", maxMem);
-
     return 0;
 
 }
