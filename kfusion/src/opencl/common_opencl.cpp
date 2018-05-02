@@ -102,7 +102,6 @@ int opencl_init(void) {
     contexts[0] = clCreateContextFromType(ctxprop_fpga, CL_DEVICE_TYPE_ACCELERATOR, NULL, NULL, &clError);
     if(!contexts[0]) {
         printf("ERROR: clCreateContextFromType(%s) failed\n", "FPGA");
-        printf("clError: %d\n", clError);
         return -1;
     }
 
