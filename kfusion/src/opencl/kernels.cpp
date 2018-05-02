@@ -43,7 +43,7 @@
 
 #endif
 
-#define NUM_THREADS_REDUCE_KERNEL 200
+#define NUM_THREADS_REDUCE_KERNEL 256
 
 inline double benchmark_tock() {
 	synchroniseDevices();
@@ -1058,10 +1058,10 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 			startOfTiming = benchmark_tock();
 			clError = clEnqueueReadBuffer(cmd_queues[0][0], ocl_reduce_output_buffer, CL_TRUE, 0, NUM_THREADS_REDUCE_KERNEL * 32 * sizeof(float), reductionoutput, 0, NULL, NULL);
 			checkErr(clError, "clEnqueueReadBuffer");
+			endOfTiming = benchmark_tock();
 			timingsIO[7] += endOfTiming - startOfTiming;
 
 			startOfTiming = endOfTiming;
-
 			TooN::Matrix<TooN::Dynamic, TooN::Dynamic, float, TooN::Reference::RowMajor> values(reductionoutput, NUM_THREADS_REDUCE_KERNEL, 32);
 
 			for (int j = 1; j < NUM_THREADS_REDUCE_KERNEL; ++j) {
