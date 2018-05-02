@@ -136,7 +136,7 @@ inline std::string descriptionOfError(cl_int err) {
     std::cerr << "ERR: " << std::string(name) << "(";\
     std::cerr << descriptionOfError(err);							\
     std::cerr << ") " << __FILE__ << ":"<< __LINE__ << std::endl;	\
-    printf("Error code: %d\n", err);								\
+    printf("Error code in %s: %d\n", name, err);								\
     exit(EXIT_FAILURE);\
   }
 

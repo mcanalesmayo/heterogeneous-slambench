@@ -238,6 +238,33 @@ int main(int argc, char ** argv) {
 				<< tracked << "        \t" << integrated // tracked and integrated flags
 				<< std::endl;
 
+		// skip acquisition stage for computation measure
+		computationTotalCustom = 0.0f;
+		for(uint i=1; i<13; i++) {
+			computationTotalCustom += timingsCustom[i];
+		}
+
+		overallTotalCustom = computationTotalCustom + timingsCustom[0];
+
+		*logstreamCustom << frame << "\t" << timingsCustom[0] << "\t" //  acquisition
+				<< timingsCustom[1] << "\t"     //  preprocessing --> mm2meters
+				<< timingsCustom[2] << "\t"     //  preprocessing --> bilateralFilter
+				<< timingsCustom[3] << "\t"     //  tracking --> halfSample
+				<< timingsCustom[4] << "\t"     //  tracking --> depth2vertex
+				<< timingsCustom[5] << "\t"     //  tracking --> vertex2normal
+				<< timingsCustom[6] << "\t"     //  tracking --> track
+				<< timingsCustom[7] << "\t"     //  tracking --> reduce
+				<< timingsCustom[8] << "\t"     //  integration --> integrate
+				<< timingsCustom[9] << "\t"     //  raycasting --> raycast
+				<< timingsCustom[10] << "\t"     //  rendering --> renderDepth
+				<< timingsCustom[11] << "\t"     //  rendering --> renderTrack
+				<< timingsCustom[12] << "\t"     //  rendering --> renderVolume
+				<< computationTotalCustom << "\t"     //  computation
+				<< overallTotalCustom << "\t"     //  total
+				<< xt << "\t" << yt << "\t" << zt << "\t"     //  X,Y,Z
+				<< tracked << "        \t" << integrated // tracked and integrated flags
+				<< std::endl;
+
 		frame++;
 
 		startOfKernel = benchmark_tock();
