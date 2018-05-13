@@ -57,9 +57,11 @@ int main(int argc, char ** argv) {
 	std::ostream* logstreamIO = &std::cout;
 	std::ostream* logstreamCPU = &std::cout;
 	std::ostream* logstreamCustom = &std::cout;
+	std::ostream* logstreamBuffers = &std::cout;
 	std::ofstream logfilestreamIO;
 	std::ofstream logfilestreamCPU;
 	std::ofstream logfilestreamCustom;
+	std::ofstream logfilestreamBuffers;
 	assert(config.compute_size_ratio > 0);
 	assert(config.integration_rate > 0);
 	assert(config.volume_size.x > 0);
@@ -82,6 +84,10 @@ int main(int argc, char ** argv) {
 	if (config.log_file_custom != "") {
 		logfilestreamCustom.open(config.log_file_custom.c_str());
 		logstreamCustom = &logfilestreamCustom;
+	}
+	if (config.log_file_buffers != "") {
+		logfilestreamBuffers.open(config.log_file_buffers.c_str());
+		logstreamBuffers = &logfilestreamBuffers;
 	}
 	if (config.input_file == "") {
 		std::cerr << "No input found." << std::endl;
