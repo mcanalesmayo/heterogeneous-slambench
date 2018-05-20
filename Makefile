@@ -40,7 +40,7 @@ TooN:
 
 living_room_traj%_loop.raw : ./build/kfusion/thirdparty/scene2raw 
 	if test -x ./build/kfusion/thirdparty/scene2raw ; then echo "..." ; else echo "do make before"; false ; fi
-	if test -x living_room_traj$(*F)_loop.raw; then echo "raw input file already present, no need for conversion. " ; else ./build/kfusion/thirdparty/scene2raw living_room_traj$(*F)_loop living_room_traj$(*F)_loop.raw; fi
+	if test -r living_room_traj$(*F)_loop.raw; then echo "raw input file already present, no need for conversion. " ; else ./build/kfusion/thirdparty/scene2raw living_room_traj$(*F)_loop living_room_traj$(*F)_loop.raw; fi
 
 living_room_traj%_loop : 
 	mkdir $@
