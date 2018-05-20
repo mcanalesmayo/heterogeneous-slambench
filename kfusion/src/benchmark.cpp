@@ -144,6 +144,7 @@ int main(int argc, char ** argv) {
 	double* timingsIO = (double *) malloc(13 * sizeof(double));
 	double* timingsCPU = (double *) malloc(13 * sizeof(double));
 	double* timingsCustom = (double *) calloc(256, sizeof(double));
+    double* timingsBuffers = (double *) calloc(13, sizeof(double));
 	double startOfKernel, endOfKernel, computationTotalIO, computationTotalCPU, computationTotalCustom, overallTotalIO, overallTotalCPU, overallTotalCustom;
 	Kfusion kfusion(computationSize, config.volume_resolution,
 			config.volume_size, init_pose, config.pyramid, timingsIO, timingsCPU, logstreamCustom);
@@ -162,6 +163,7 @@ int main(int argc, char ** argv) {
 	logstreamCPU->setf(std::ios::fixed, std::ios::floatfield);
 
 	logstreamCustom->setf(std::ios::fixed, std::ios::floatfield);
+    logstreamBuffers->setf(std::ios::fixed, std::ios::floatfield);
 
 	startOfKernel = benchmark_tock();
 	while (reader->readNextDepthFrame(inputDepth)) {
