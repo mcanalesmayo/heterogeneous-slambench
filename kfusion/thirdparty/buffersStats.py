@@ -17,10 +17,10 @@ fileref = open(sys.argv[1],'r')
 data = fileref.read()
 fileref.close()
 lines = data.split("\n") # remove head + first line
-entries = {}
-bufSizes = {}
-transferTimes = {}
-bandwiths = {}
+entries = []
+bufSizes = []
+transferTimes = []
+bandwidths = []
 
 for line in lines:
     matching = re.match(ENTRY_REGEXP, line)
@@ -32,56 +32,49 @@ for line in lines:
         iteration = int(matching.group(4))
         bufSize = int(matching.group(5))
         transferTime = float(matching.group(6))
-        bandwith = float(bufSize)/transferTime
+        bandwidth = float(bufSize)/transferTime
 
-        entries[(kernelName, operation, level, iteration)] = {'bufSize': bufSize, 'transferTime': transferTime, 'bandwith': bandwith}
-        bufSizes[(kernelName, operation, level, iteration)] = bufSize
-        transferTimes[(kernelName, operation, level, iteration)] = transferTime
-        bandwiths[(kernelName, operation, level, iteration)] = bandwith
-
-def averageInDict(d):
-    total = 0.0
-    length = 0
-    for key,value in d.items():
-        length += 1
-        total += float(value)
-    return total/length
+        entries.append({'kernelName': kernelName, 'operation': operation, 'level': level, 'iteration': iteration, 'bufSize': bufSize, 'transferTime': transferTime, 'bandwidth': bandwidth})
+        bufSizes.append(bufSize)
+        transferTimes.append(transferTime)
+        bandwidths.append(bandwidth)
 
 with open(sys.argv[2], 'w') as f:
-    avgBufSize = averageInDict(bufSizes)
-    avgTransferTime = averageInDict(transferTimes)
-    avgBandwith = averageInDict(bandwiths)
+    totalBufSize = sum(bufSizes)
+    totalTransferTime = sum(transferTimes)
+    totalbandwidth = float(totalBufSize)/totalTransferTime
 
-    totalBufSize = sum(bufSizes.values())
-    totalTransferTime = sum(transferTimes.values())
-    totalBandwith = float(totalBufSize)/totalTransferTime
+    avgBufSize = totalBufSize/len(bufSizes)
+    avgTransferTime = totalTransferTime/len(transferTimes)
+    avgbandwidth = totalbandwidth/len(bandwidths)
 
-    maxBufSize = max(bufSizes.values())
-    minBufSize = min(bufSizes.values())
+    maxBufSize = max(bufSizes)
+    minBufSize = min(bufSizes)
 
-    maxTransferTime = max(transferTimes.values())
-    maxTransferTimeIdx = transferTimes.keys()[transferTimes.values().index(maxTransferTime)]
-    minTransferTime = min(transferTimes.values())
-    minTransferTimeIdx = transferTimes.keys()[transferTimes.values().index(minTransferTime)]
+    maxTransferTime = max(transferTimes)
+    maxTransferTimeEntry = (item for item in entries if item["transferTime"] == maxTransferTime).next()
+    minTransferTime = min(transferTimes)
+    minTransferTimeEntry = (item for item in entries if item["transferTime"] == minTransferTime).next()
 
-    maxBandwithTime = max(bandwiths.values())
-    maxBandwithTimeIdx = bandwiths.keys()[bandwiths.values().index(maxBandwithTime)]
-    minBandwithTime = min(bandwiths.values())
-    minBandwithTimeIdx = bandwiths.keys()[bandwiths.values().index(minBandwithTime)]
+    maxbandwidthTime = max(bandwidths)
+    maxbandwidthTimeEntry = (item for item in entries if item["bandwidth"] == maxbandwidthTime).next()
+    minbandwidthTime = min(bandwidths)
+    minbandwidthTimeEntry = (item for item in entries if item["bandwidth"] == minbandwidthTime).next()
 
     f.write("Amount of entries: " + str(len(entries)) + "\n")
     f.write("Total size transferred: " + str(float(totalBufSize)/(1024*1024)) + " MB\n")
     f.write("Total transfer time: " + str(totalTransferTime) + " s\n")
-    f.write("Overall bandwith: " + str(totalBandwith/(1024*1024)) + " MB/s\n\n")
+    f.write("Overall bandwidth: " + str(totalbandwidth/(1024*1024)) + " MB/s\n\n")
+
     f.write("Average buffer size: " + str(float(avgBufSize)/(1024*1024)) + " MB\n")
     f.write("Average transfer time: " + str(avgTransferTime) + " s\n")
-    f.write("Average bandwith: " + str(avgBandwith/(1024*1024)) + " MB/s\n\n")
+    f.write("Average bandwidth: " + str(avgbandwidth/(1024*1024)) + " MB/s\n\n")
 
     f.write("Max buffer size: " + str(float(maxBufSize)/(1024*1024)) + " MB\n")
     f.write("Min buffer size: " + str(float(minBufSize)/(1024*1024)) + " MB\n\n")
     
-    f.write("Max transfer time entry... Buffer Size: " + str(float(bufSizes[maxTransferTimeIdx])/(1024*1024)) + " MB\tTransfer time: " + str(maxTransferTime) + " s\tBandwith: " + str(bandwiths[maxTransferTimeIdx]/(1024*1024)) + " MB/s\n")
-    f.write("Min transfer time entry... Buffer Size: " + str(float(bufSizes[minTransferTimeIdx])/(1024*1024)) + " MB\tTransfer time: " + str(minTransferTime) + " s\tBandwith: " + str(bandwiths[minTransferTimeIdx]/(1024*1024)) + " MB/s\n")
+    f.write("Max transfer time entry... Buffer Size: " + str(float(maxTransferTimeEntry['bufSize'])/(1024*1024)) + " MB\tTransfer time: " + str(maxTransferTime) + " s\tbandwidth: " + str(maxTransferTimeEntry['bandwidth']/(1024*1024)) + " MB/s\n")
+    f.write("Min transfer time entry... Buffer Size: " + str(float(minTransferTimeEntry['bufSize'])/(1024*1024)) + " MB\tTransfer time: " + str(minTransferTime) + " s\tbandwidth: " + str(minTransferTimeEntry['bandwidth']/(1024*1024)) + " MB/s\n")
 
-    f.write("Max bandwith entry... Buffer Size: " + str(float(bufSizes[maxBandwithTimeIdx])/(1024*1024)) + " MB\tTransfer time: " + str(transferTimes[maxBandwithTimeIdx]) + " s\tBandwith: " + str(maxBandwithTime/(1024*1024)) + " MB/s\n")
-    f.write("Min bandwith entry... Buffer Size: " + str(float(bufSizes[minBandwithTimeIdx])/(1024*1024)) + " MB\tTransfer time: " + str(transferTimes[minBandwithTimeIdx]) + " s\tBandwith: " + str(minBandwithTime/(1024*1024)) + " MB/s\n")
+    f.write("Max bandwidth entry... Buffer Size: " + str(float(maxbandwidthTimeEntry['bufSize'])/(1024*1024)) + " MB\tTransfer time: " + str(maxbandwidthTimeEntry['transferTime']) + " s\tbandwidth: " + str(maxbandwidthTime/(1024*1024)) + " MB/s\n")
+    f.write("Min bandwidth entry... Buffer Size: " + str(float(minbandwidthTimeEntry['bufSize'])/(1024*1024)) + " MB\tTransfer time: " + str(minbandwidthTimeEntry['transferTime']) + " s\tbandwidth: " + str(minbandwidthTime/(1024*1024)) + " MB/s\n")
