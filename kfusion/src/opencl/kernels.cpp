@@ -1029,11 +1029,14 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 
 			startOfTiming = benchmark_tock();
 			clEnqueueWriteBuffer(cmd_queues[0][0], ocl_trackingResult, CL_TRUE, 0, sizeof(TrackData) * (localimagesize.x * localimagesize.y), trackingResult, 0, NULL, NULL);
-			checkErr(clError, "clEnqueueWriteBuffer");
 			endOfTiming = benchmark_tock();
+			checkErr(clError, "clEnqueueWriteBuffer");
 			timingsIO[7] += endOfTiming - startOfTiming;
 
-			startOfTiming = endOfTiming;
+			*logstreamBuffers << "reduce\tclEnqueueWriteBuffer\t" << level << "\t" << i << "\t"
+			<< sizeof(TrackData) * (localimagesize.x * localimagesize.y) << "\t" << endOfTiming - startOfTiming << std::endl;
+
+			startOfTiming = benchmark_tock();
 			int arg = 0;
 			char errStr[20];
 			clError = clSetKernelArg(reduce_ocl_kernel, arg++, sizeof(cl_mem), &ocl_reduce_output_buffer);
@@ -1057,11 +1060,14 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 
 			startOfTiming = benchmark_tock();
 			clError = clEnqueueReadBuffer(cmd_queues[0][0], ocl_reduce_output_buffer, CL_TRUE, 0, NUM_THREADS_REDUCE_KERNEL * 32 * sizeof(float), reductionoutput, 0, NULL, NULL);
-			checkErr(clError, "clEnqueueReadBuffer");
 			endOfTiming = benchmark_tock();
+			checkErr(clError, "clEnqueueReadBuffer");
 			timingsIO[7] += endOfTiming - startOfTiming;
 
-			startOfTiming = endOfTiming;
+			*logstreamBuffers << "reduce\tclEnqueueReadBuffer\t" << level << "\t" << i << "\t"
+			<< NUM_THREADS_REDUCE_KERNEL * 32 * sizeof(float) << "\t" << endOfTiming - startOfTiming << std::endl;
+
+			startOfTiming = benchmark_tock();
 			TooN::Matrix<TooN::Dynamic, TooN::Dynamic, float, TooN::Reference::RowMajor> values(reductionoutput, NUM_THREADS_REDUCE_KERNEL, 32);
 
 			for (int j = 1; j < NUM_THREADS_REDUCE_KERNEL; ++j) {
