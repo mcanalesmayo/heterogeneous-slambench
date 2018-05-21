@@ -43,6 +43,23 @@
 
 #endif
 
+inline double benchmark_tock() {
+	synchroniseDevices();
+#ifdef __APPLE__
+	clock_serv_t cclock;
+	mach_timespec_t clockData;
+	host_get_clock_service(mach_host_self(), SYSTEM_CLOCK, &cclock);
+	clock_get_time(cclock, &clockData);
+	mach_port_deallocate(mach_task_self(), cclock);
+#else
+	struct timespec clockData;
+	clock_gettime(CLOCK_MONOTONIC, &clockData);
+#endif
+	return (double) clockData.tv_sec + clockData.tv_nsec / 1000000000.0;
+}
+
+double startOfTiming, endOfTiming;
+
 cl_kernel mm2meters_ocl_kernel;
 
 cl_mem ocl_FloatDepth = NULL;
@@ -944,6 +961,7 @@ void renderVolumeKernel(uchar4* out, const uint2 depthSize, const Volume volume,
 }
 
 bool Kfusion::preprocessing(const ushort * inputDepth, const uint2 inputSize) {
+	startOfTiming = benchmark_tock();
 
 	// bilateral_filter(ScaledDepth[0], inputDepth, inputSize , gaussian, e_delta, radius);
     uint2 outSize = computationSize;
@@ -1002,6 +1020,9 @@ bool Kfusion::preprocessing(const ushort * inputDepth, const uint2 inputSize) {
     checkErr(clError, "clEnqueueNDRangeKernel");
 
     clEnqueueReadBuffer(cmd_queues[0][0], ocl_FloatDepth, CL_TRUE, 0, outSize.x * outSize.y * sizeof(float), floatDepth, 0, NULL, NULL);
+
+    endOfTiming = benchmark_tock();
+    timingsCPU[1] = endOfTiming - startOfTiming;
 
 	bilateralFilterKernel(ScaledDepth[0], floatDepth, computationSize, gaussian, e_delta, radius);
 
