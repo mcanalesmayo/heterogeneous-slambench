@@ -8,9 +8,9 @@
 #define Y_LEVEL_3 Y_LEVEL_2/2
 #define SIZE_LEVEL_3 X_LEVEL_3*Y_LEVEL_3
 
-#define NUM_WI_1 400
+#define NUM_WI_1 200
 #define NUM_WI_2 200
-#define NUM_WI_3 100
+#define NUM_WI_3 200
 
 #define BATCHSIZE_1 SIZE_LEVEL_1/NUM_WI_1
 #define BATCHSIZE_2 SIZE_LEVEL_2/NUM_WI_2
