@@ -60,7 +60,7 @@ inline double benchmark_tock() {
 	return (double) clockData.tv_sec + clockData.tv_nsec / 1000000000.0;
 }
 
-double startOfKernel, endOfKernel;
+double startOfTiming, endOfTiming;
 
 bool updatePoseKernelRes;
 
@@ -1011,7 +1011,8 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 		localimagesize = make_uint2(localimagesize.x / 2, localimagesize.y / 2);
 	}
 
-	timings[7] = 0.0f;
+	timingsIO[7] = 0.0f;
+	timingsCPU[7] = 0.0f;
 
 	oldPose = pose;
 	const Matrix4 projectReference = getCameraMatrix(k) * inverse(raycastPose);
@@ -1028,10 +1029,14 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 
 
 
-			startOfKernel = benchmark_tock();
-
+			startOfTiming = benchmark_tock();
 			clEnqueueWriteBuffer(cmd_queues[0][0], ocl_trackingResult, CL_TRUE, 0, sizeof(TrackData) * (localimagesize.x * localimagesize.y), trackingResult, 0, NULL, NULL);
+			endOfTiming = benchmark_tock();
+			timingsIO[7] += endOfTiming - startOfTiming;
 			checkErr(clError, "clEnqueueReadBuffer");
+
+			*logstreamBuffers << "reduce\tclEnqueueWriteBuffer\t" << level << "\t" << i << "\t"
+			<< sizeof(TrackData) * (localimagesize.x * localimagesize.y) << "\t" << endOfTiming - startOfTiming << std::endl;
 
 			int arg = 0;
 			char errStr[20];
@@ -1046,18 +1051,26 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 			clError = clEnqueueNDRangeKernel(cmd_queues[0][0], reduce_ocl_kernel[level], 1, NULL, RglobalWorksize, NULL, 0, NULL, NULL);
             checkErr(clError, "clEnqueueNDRangeKernel");
 
+            startOfTiming = benchmark_tock();
             clError = clEnqueueReadBuffer(cmd_queues[0][0], ocl_reduce_output_buffer, CL_TRUE, 0, NUM_THREADS_REDUCE_KERNEL * 32 * sizeof(float), reductionoutput, 0, NULL, NULL);
+            endOfTiming = benchmark_tock();
+            timingsIO[7] += endOfTiming - startOfTiming;
 			checkErr(clError, "clEnqueueReadBuffer");
 
+			*logstreamBuffers << "reduce\tclEnqueueReadBuffer\t" << level << "\t" << i << "\t"
+			<< NUM_THREADS_REDUCE_KERNEL * 32 * sizeof(float) << "\t" << endOfTiming - startOfTiming << std::endl;
+
+			startOfTiming = benchmark_tock();
 			TooN::Matrix<TooN::Dynamic, TooN::Dynamic, float, TooN::Reference::RowMajor> values(reductionoutput, NUM_THREADS_REDUCE_KERNEL, 32);
 
 			for (int j = 1; j < NUM_THREADS_REDUCE_KERNEL; ++j) {
 				values[0] += values[j];
 			}
 
+			endOfTiming = benchmark_tock();
+			timingsCPU[7] += endOfTiming - startOfTiming;
+
 			updatePoseKernelRes = updatePoseKernel(pose, reductionoutput, icp_threshold);
-			endOfKernel = benchmark_tock();
-			timings[7] += endOfKernel - startOfKernel;
 
 			if (updatePoseKernelRes) break;
 
