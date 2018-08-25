@@ -58,7 +58,7 @@ inline double benchmark_tock() {
 	return (double) clockData.tv_sec + clockData.tv_nsec / 1000000000.0;
 }
 
-double startOfKernel, endOfKernel;
+double startOfTiming, endOfTiming;
 
 bool updatePoseKernelRes;
 
@@ -130,7 +130,7 @@ void Kfusion::languageSpecificConstructor() {
 
 
 	// internal buffers to initialize
-	reductionoutput = (float*) calloc(sizeof(float) * 8 * 32, 1);
+	posix_memalign((void **) &reductionoutput, 64, sizeof(float) * 8 * 32);
 
 	ScaledDepth = (float**) calloc(sizeof(float*) * iterations.size(), 1);
 	inputVertex = (float3**) calloc(sizeof(float3*) * iterations.size(), 1);
@@ -154,8 +154,7 @@ void Kfusion::languageSpecificConstructor() {
 			sizeof(float3) * computationSize.x * computationSize.y, 1);
 	normal = (float3*) calloc(
 			sizeof(float3) * computationSize.x * computationSize.y, 1);
-	trackingResult = (TrackData*) calloc(
-			sizeof(TrackData) * computationSize.x * computationSize.y, 1);
+	posix_memalign((void **) &trackingResult, 64, sizeof(TrackData) * computationSize.x * computationSize.y);
 
 	// ********* BEGIN : Generate the gaussian *************
 	size_t gaussianS = radius * 2 + 1;
@@ -575,7 +574,7 @@ void trackKernel(TrackData* output, const float3* inVertex,
 			pixel.x = pixelx;
 			pixel.y = pixely;
 
-			TrackData & row = output[pixel.x + pixel.y * refSize.x];
+			TrackData & row = output[pixel.x + pixel.y * inSize.x];
 
 			if (inNormal[pixel.x + pixel.y * inSize.x].x == KFUSION_INVALID) {
 				row.result = -1;
@@ -1004,7 +1003,8 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 		localimagesize = make_uint2(localimagesize.x / 2, localimagesize.y / 2);
 	}
 
-	timings[7] = 0.0f;
+	timingsIO[7] = 0.0f;
+	timingsCPU[7] = 0.0f;
 
 	oldPose = pose;
 	const Matrix4 projectReference = getCameraMatrix(k) * inverse(raycastPose);
@@ -1020,10 +1020,14 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 					projectReference, dist_threshold, normal_threshold);
 
 
-			startOfKernel = benchmark_tock();
-
-			clEnqueueWriteBuffer(cmd_queues[0][0], ocl_trackingResult, CL_TRUE, 0, sizeof(TrackData) * (computationSize.x * computationSize.y), trackingResult, 0, NULL, NULL);
+			startOfTiming = benchmark_tock();
+			clEnqueueWriteBuffer(cmd_queues[0][0], ocl_trackingResult, CL_TRUE, 0, sizeof(TrackData) * (localimagesize.x * localimagesize.y), trackingResult, 0, NULL, NULL);
+			endOfTiming = benchmark_tock();
+			timingsIO[7] += endOfTiming - startOfTiming;
 			checkErr(clError, "clEnqueueReadBuffer");
+
+			*logstreamBuffers << "reduce\tclEnqueueWriteBuffer\t" << level << "\t" << i << "\t"
+			<< sizeof(TrackData) * (localimagesize.x * localimagesize.y) << "\t" << endOfTiming - startOfTiming << std::endl;
 
 			int arg = 0;
 			char errStr[20];
@@ -1039,36 +1043,22 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 			clError = clSetKernelArg(reduce_ocl_kernel, arg++, sizeof(cl_uint2), &localimagesize);
 			sprintf(errStr, "clSetKernelArg%d", arg);
 			checkErr(clError, errStr);
-            /*clError = clSetKernelArg(reduce_ocl_kernel, arg++, size_of_group * 32 * sizeof(float), NULL);
-            sprintf(errStr, "clSetKernelArg%d", arg);
-            checkErr(clError, errStr);
-
-			size_t RglobalWorksize[1] = { size_of_group * number_of_groups };
-            size_t RlocalWorksize[1] = { size_of_group }; // Dont change it !
-
-            clError = clEnqueueNDRangeKernel(cmd_queues[0][0], reduce_ocl_kernel, 1, NULL, RglobalWorksize, RlocalWorksize, 0, NULL, NULL);
-            checkErr(clError, "clEnqueueNDRangeKernel");
-
-			clError = clEnqueueReadBuffer(cmd_queues[0][0], ocl_reduce_output_buffer, CL_TRUE, 0, 32 * number_of_groups * sizeof(float), reductionoutput, 0, NULL, NULL);
-			checkErr(clError, "clEnqueueReadBuffer");
-
-			TooN::Matrix<TooN::Dynamic, TooN::Dynamic, float, TooN::Reference::RowMajor> values(reductionoutput, number_of_groups, 32);
-
-			for (int j = 1; j < number_of_groups; ++j) {
-				values[0] += values[j];
-			}*/
 
 			size_t RglobalWorksize[1] = { 1 };
             size_t RlocalWorksize[1] = { 1 };
 			clError = clEnqueueNDRangeKernel(cmd_queues[0][0], reduce_ocl_kernel, 1, NULL, RglobalWorksize, RlocalWorksize, 0, NULL, NULL);
             checkErr(clError, "clEnqueueNDRangeKernel");
 
+            startOfTiming = benchmark_tock();
             clError = clEnqueueReadBuffer(cmd_queues[0][0], ocl_reduce_output_buffer, CL_TRUE, 0, 32 * sizeof(float), reductionoutput, 0, NULL, NULL);
+            endOfTiming = benchmark_tock();
+			timingsIO[7] += endOfTiming - startOfTiming;
 			checkErr(clError, "clEnqueueReadBuffer");
 
+			*logstreamBuffers << "reduce\tclEnqueueReadBuffer\t" << level << "\t" << i << "\t"
+			<< 32 * sizeof(float) << "\t" << endOfTiming - startOfTiming << std::endl;
+
 			updatePoseKernelRes = updatePoseKernel(pose, reductionoutput, icp_threshold);
-			endOfKernel = benchmark_tock();
-			timings[7] += endOfKernel - startOfKernel;
 
 			if (updatePoseKernelRes) break;
 
