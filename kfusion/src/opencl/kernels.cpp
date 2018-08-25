@@ -61,7 +61,7 @@ inline double benchmark_tock() {
 	return (double) clockData.tv_sec + clockData.tv_nsec / 1000000000.0;
 }
 
-double startOfKernel, endOfKernel;
+double startOfTiming, endOfTiming;
 
 bool updatePoseKernelRes;
 
@@ -556,7 +556,7 @@ void reduceKernel(float * out, TrackData* J, const uint2 Jsize,
 			for(int i = 0; i < 32; ++i) { // copy over to shared memory
 				S[sline][i] = sums[i];
 			}
-			// WE NO intER NEED TO DO THIS AS the threads execute sequentially inside a for loop
+			// WE NO LONGER NEED TO DO THIS AS the threads execute sequentially inside a for loop
 
 		} // threads now execute as a for loop.
 		  //so the __syncthreads() is irrelevant
@@ -598,7 +598,7 @@ void trackKernel(TrackData* output, const float3* inVertex,
 			pixel.x = pixelx;
 			pixel.y = pixely;
 
-			TrackData & row = output[pixel.x + pixel.y * refSize.x];
+			TrackData & row = output[pixel.x + pixel.y * inSize.x];
 
 			if (inNormal[pixel.x + pixel.y * inSize.x].x == KFUSION_INVALID) {
 				row.result = -1;
@@ -1025,7 +1025,8 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 		localimagesize = make_uint2(localimagesize.x / 2, localimagesize.y / 2);
 	}
 
-	timings[7] = 0.0f;
+	timingsIO[7] = 0.0f;
+	timingsCPU[7] = 0.0f;
 
 	oldPose = pose;
 	const Matrix4 projectReference = getCameraMatrix(k) * inverse(raycastPose);
@@ -1041,19 +1042,29 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 					projectReference, dist_threshold, normal_threshold);
 
 
-			startOfKernel = benchmark_tock();
+			startOfTiming = benchmark_tock();
 
-			for (int x=0; x<computationSize.x; x++) {
-				for (int y=0; y<computationSize.y; y++) {
-					trackingResultFixedPoint[x+y*computationSize.x].result = trackingResult[x+y*computationSize.x].result;
-					trackingResultFixedPoint[x+y*computationSize.x].error = FLOAT2FIXED(trackingResult[x+y*computationSize.x].error, FRACT_BITS_ERROR);
+			for (int x=0; x<localimagesize.x; x++) {
+				for (int y=0; y<localimagesize.y; y++) {
+					trackingResultFixedPoint[x+y*localimagesize.x].result = trackingResult[x+y*localimagesize.x].result;
+					trackingResultFixedPoint[x+y*localimagesize.x].error = FLOAT2FIXED(trackingResult[x+y*localimagesize.x].error, FRACT_BITS_ERROR);
 					for (int idx=0; idx<6; idx++) {
-						trackingResultFixedPoint[x+y*computationSize.x].J[idx] = FLOAT2FIXED(trackingResult[x+y*computationSize.x].J[idx], FRACT_BITS_J);
+						trackingResultFixedPoint[x+y*localimagesize.x].J[idx] = FLOAT2FIXED(trackingResult[x+y*localimagesize.x].J[idx], FRACT_BITS_J);
 					}
 				}
 			}
-			clEnqueueWriteBuffer(cmd_queues[0][0], ocl_trackingResult, CL_TRUE, 0, sizeof(TrackDataFixedPoint) * (computationSize.x * computationSize.y), trackingResultFixedPoint, 0, NULL, NULL);
+
+			endOfTiming = benchmark_tock();
+			timingsCPU[7] += endOfTiming - startOfTiming;
+
+			startOfTiming = benchmark_tock();
+			clEnqueueWriteBuffer(cmd_queues[0][0], ocl_trackingResult, CL_TRUE, 0, sizeof(TrackDataFixedPoint) * (localimagesize.x * localimagesize.y), trackingResultFixedPoint, 0, NULL, NULL);
+			endOfTiming = benchmark_tock();
+			timingsIO[7] += endOfTiming - startOfTiming;
 			checkErr(clError, "clEnqueueWriteBuffer");
+
+			*logstreamBuffers << "reduce\tclEnqueueWriteBuffer\t" << level << "\t" << i << "\t"
+			<< sizeof(TrackData) * (localimagesize.x * localimagesize.y) << "\t" << endOfTiming - startOfTiming << std::endl;
 
 			int arg = 0;
 			char errStr[20];
@@ -1077,11 +1088,18 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 			clError = clEnqueueNDRangeKernel(cmd_queues[0][0], reduce_ocl_kernel, 1, NULL, RglobalWorksize, NULL, 0, NULL, NULL);
             checkErr(clError, "clEnqueueNDRangeKernel");
 
+            startOfTiming = benchmark_tock();
             clError = clEnqueueReadBuffer(cmd_queues[0][0], ocl_reduce_output_buffer_out, CL_TRUE, 0, NUM_THREADS_REDUCE_KERNEL * 26 * sizeof(int), reductionoutputFixedPoint, 0, NULL, NULL);
 			checkErr(clError, "clEnqueueReadBuffer");
 			clError = clEnqueueReadBuffer(cmd_queues[0][0], ocl_reduce_output_buffer_outJTe, CL_TRUE, 0, NUM_THREADS_REDUCE_KERNEL * 6 * sizeof(float), reductionoutputFloat, 0, NULL, NULL);
 			checkErr(clError, "clEnqueueReadBuffer");
+			endOfTiming = benchmark_tock();
+			timingsIO[7] += endOfTiming - startOfTiming;
 
+			*logstreamBuffers << "reduce\tclEnqueueReadBuffer\t" << level << "\t" << i << "\t"
+			<< NUM_THREADS_REDUCE_KERNEL * 26 * sizeof(int) + NUM_THREADS_REDUCE_KERNEL * 6 * sizeof(float) << "\t" << endOfTiming - startOfTiming << std::endl;
+
+			startOfTiming = benchmark_tock();
 			uint idx, reductionIdx;
 			for (idx=0; idx<NUM_THREADS_REDUCE_KERNEL; idx++){
 				// error
@@ -1106,9 +1124,10 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 				values[0] += values[j];
 			}
 
+			endOfTiming = benchmark_tock();
+			timingsCPU[7] += endOfTiming - startOfTiming;
+
 			updatePoseKernelRes = updatePoseKernel(pose, reductionoutput, icp_threshold);
-			endOfKernel = benchmark_tock();
-			timings[7] += endOfKernel - startOfKernel;
 
 			if (updatePoseKernelRes) break;
 
