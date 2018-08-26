@@ -9,8 +9,8 @@
 #define SIZE_LEVEL_3 X_LEVEL_3*Y_LEVEL_3
 
 #define REDUCE_KERNEL_THREADS_DIVISOR 192
-#define NUM_WI_1 150
-#define NUM_WI_2 75
+#define NUM_WI_1 75
+#define NUM_WI_2 50
 #define NUM_WI_3 30
 
 #define BATCHSIZE_1 SIZE_LEVEL_1/NUM_WI_1
