@@ -571,7 +571,7 @@ void trackKernel(TrackData* output, const float3* inVertex,
 			pixel.x = pixelx;
 			pixel.y = pixely;
 
-			TrackData & row = output[pixel.x + pixel.y * refSize.x];
+			TrackData & row = output[pixel.x + pixel.y * inSize.x];
 
 			if (inNormal[pixel.x + pixel.y * inSize.x].x == KFUSION_INVALID) {
 				row.result = -1;
@@ -1015,10 +1015,13 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 					projectReference, dist_threshold, normal_threshold);
 
 			startOfTiming = benchmark_tock();
-			clEnqueueWriteBuffer(cmd_queues[1][0], ocl_trackingResult, CL_TRUE, 0, sizeof(TrackData) * (computationSize.x * computationSize.y), trackingResult, 0, NULL, NULL);
+			clEnqueueWriteBuffer(cmd_queues[1][0], ocl_trackingResult, CL_TRUE, 0, sizeof(TrackData) * (localimagesize.x * localimagesize.y), trackingResult, 0, NULL, NULL);
 			checkErr(clError, "clEnqueueReadBuffer");
 			endOfTiming = benchmark_tock();
 			timingsIO[7] += endOfTiming - startOfTiming;
+
+			*logstreamBuffers << "reduce\tclEnqueueWriteBuffer\t" << level << "\t" << i << "\t"
+			<< sizeof(TrackData) * (localimagesize.x * localimagesize.y) << "\t" << endOfTiming - startOfTiming << std::endl;
 
 			startOfTiming = endOfTiming;
 			int arg = 0;
@@ -1052,6 +1055,9 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 			checkErr(clError, "clEnqueueReadBuffer");
 			endOfTiming = benchmark_tock();
 			timingsIO[7] += endOfTiming - startOfTiming;
+
+			*logstreamBuffers << "reduce\tclEnqueueReadBuffer\t" << level << "\t" << i << "\t"
+			<< 32 * number_of_groups * sizeof(float) << "\t" << endOfTiming - startOfTiming << std::endl;
 
 			startOfTiming = endOfTiming;
 			TooN::Matrix<TooN::Dynamic, TooN::Dynamic, float, TooN::Reference::RowMajor> values(reductionoutput, number_of_groups, 32);
