@@ -58,7 +58,7 @@ inline double benchmark_tock() {
 	return (double) clockData.tv_sec + clockData.tv_nsec / 1000000000.0;
 }
 
-double startOfKernel, endOfKernel;
+double startOfTiming, endOfTiming;
 
 cl_kernel integrate_ocl_kernel;
 
@@ -692,7 +692,6 @@ void integrateKernel(Volume vol, const float* depth, uint2 depthSize,
 		const Matrix4 invTrack, const Matrix4 K, const float mu,
 		const float maxweight, uint2 computationSize) {
 
-	//uint3 pix = make_uint3(thr2pos2());
 	const float3 delta = rotate(invTrack, make_float3(0, 0, vol.dim.z / vol.size.z));
 	const float3 cameraDelta = rotate(K, delta);
 
@@ -1064,21 +1063,89 @@ bool Kfusion::raycasting(float4 k, float mu, uint frame) {
 bool Kfusion::integration(float4 k, uint integration_rate, float mu,
 		uint frame) {
 
-	startOfKernel = benchmark_tock();
+	timingsIO[8] = 0.0f;
+	timingsCPU[8] = 0.0f;
 
+	startOfTiming = benchmark_tock();
 	bool doIntegrate = checkPoseKernel(pose, oldPose, reductionoutput,
 			computationSize, track_threshold);
+	endOfTiming = benchmark_tock();
+	timingsCPU[8] += endOfTiming - startOfTiming;
 
 	if ((doIntegrate && ((frame % integration_rate) == 0)) || (frame <= 3)) {
-		integrateKernel(volume, floatDepth, computationSize, inverse(pose),
-				getCameraMatrix(k), mu, maxweight, computationSize);
+		startOfTiming = benchmark_tock();
+		const Matrix4 invTrack = inverse(pose);
+		const Matrix4 K = getCameraMatrix(k);
+		const float3 delta = rotate(invTrack, make_float3(0, 0, volume.dim.z / volume.size.z));
+		const float3 cameraDelta = rotate(K, delta);
+		endOfTiming = benchmark_tock();
+		timingsCPU[8] += endOfTiming - startOfTiming;
+
+		int arg = 0;
+		char errStr[20];
+
+		startOfTiming = benchmark_tock();
+		clError = clEnqueueWriteBuffer(cmd_queues[1][0], ocl_FloatDepth, CL_TRUE, 0, sizeof(float) * computationSize.x * computationSize.y, floatDepth, 0, NULL, NULL);
+		endOfTiming = benchmark_tock();
+		timingsIO[8] += endOfTiming - startOfTiming;
+		checkErr(clError, "clEnqueueWriteBuffer");
+
+		startOfTiming = benchmark_tock();
+		clError = clEnqueueWriteBuffer(cmd_queues[1][0], ocl_volume_data, CL_TRUE, 0, volume.size.x * volume.size.y * volume.size.z * sizeof(short2), volume.data, 0, NULL, NULL);
+		endOfTiming = benchmark_tock();
+		timingsIO[8] += endOfTiming - startOfTiming;
+		checkErr(clError, "clEnqueueWriteBuffer");
+
+		clError = clSetKernelArg(integrate_ocl_kernel, arg++, sizeof(cl_mem), (void*) &ocl_volume_data);
+		sprintf(errStr, "clSetKernelArg%d", arg);
+		checkErr(clError, errStr);
+		clError = clSetKernelArg(integrate_ocl_kernel, arg++, sizeof(cl_uint3), (void*) &volume.size);
+		sprintf(errStr, "clSetKernelArg%d", arg);
+		checkErr(clError, errStr);
+		clError = clSetKernelArg(integrate_ocl_kernel, arg++, sizeof(cl_float3), (void*) &volume.dim);
+		sprintf(errStr, "clSetKernelArg%d", arg);
+		checkErr(clError, errStr);
+		clError = clSetKernelArg(integrate_ocl_kernel, arg++, sizeof(cl_mem), (void*) &ocl_FloatDepth);
+		sprintf(errStr, "clSetKernelArg%d", arg);
+		checkErr(clError, errStr);
+		clError = clSetKernelArg(integrate_ocl_kernel, arg++, sizeof(cl_uint2), (void*) &computationSize);
+		sprintf(errStr, "clSetKernelArg%d", arg);
+		checkErr(clError, errStr);
+		clError = clSetKernelArg(integrate_ocl_kernel, arg++, sizeof(Matrix4), (void*) &invTrack);
+		sprintf(errStr, "clSetKernelArg%d", arg);
+		checkErr(clError, errStr);
+		clError = clSetKernelArg(integrate_ocl_kernel, arg++, sizeof(Matrix4), (void*) &K);
+		sprintf(errStr, "clSetKernelArg%d", arg);
+		checkErr(clError, errStr);
+		clError = clSetKernelArg(integrate_ocl_kernel, arg++, sizeof(cl_float), (void*) &mu);
+		sprintf(errStr, "clSetKernelArg%d", arg);
+		checkErr(clError, errStr);
+		clError = clSetKernelArg(integrate_ocl_kernel, arg++, sizeof(cl_float), (void*) &maxweight);
+		sprintf(errStr, "clSetKernelArg%d", arg);
+		checkErr(clError, errStr);
+
+		clError = clSetKernelArg(integrate_ocl_kernel, arg++, sizeof(cl_float3), (void*) &delta);
+		sprintf(errStr, "clSetKernelArg%d", arg);
+		checkErr(clError, errStr);
+		clError = clSetKernelArg(integrate_ocl_kernel, arg++, sizeof(cl_float3), (void*) &cameraDelta);
+		sprintf(errStr, "clSetKernelArg%d", arg);
+		checkErr(clError, errStr);
+
+		size_t globalWorksize[2] = { volume.size.x, volume.size.y };
+
+		clError = clEnqueueNDRangeKernel(cmd_queues[1][0], integrate_ocl_kernel, 2, NULL, globalWorksize, NULL, 0, NULL, NULL);
+		checkErr(clError, "clEnqueueNDRangeKernel");
+
+		startOfTiming = benchmark_tock();
+		clError = clEnqueueReadBuffer(cmd_queues[1][0], ocl_volume_data, CL_TRUE, 0, volume.size.x * volume.size.y * volume.size.z * sizeof(short2), volume.data, 0, NULL, NULL);
+		endOfTiming = benchmark_tock();
+		timingsIO[8] += endOfTiming - startOfTiming;
+		checkErr(clError, "clEnqueueReadBuffer");
+
 		doIntegrate = true;
 	} else {
 		doIntegrate = false;
 	}
-
-	endOfKernel = benchmark_tock();
-	timings[8] = endOfKernel - startOfKernel;
 
 	return doIntegrate;
 
