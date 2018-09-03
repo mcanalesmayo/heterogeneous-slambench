@@ -43,6 +43,23 @@
 
 #endif
 
+inline double benchmark_tock() {
+	synchroniseDevices();
+#ifdef __APPLE__
+	clock_serv_t cclock;
+	mach_timespec_t clockData;
+	host_get_clock_service(mach_host_self(), SYSTEM_CLOCK, &cclock);
+	clock_get_time(cclock, &clockData);
+	mach_port_deallocate(mach_task_self(), cclock);
+#else
+	struct timespec clockData;
+	clock_gettime(CLOCK_MONOTONIC, &clockData);
+#endif
+	return (double) clockData.tv_sec + clockData.tv_nsec / 1000000000.0;
+}
+
+double startOfTiming, endOfTiming;
+
 cl_kernel integrate_ocl_kernel;
 
 cl_mem ocl_FloatDepth = NULL;
@@ -673,7 +690,7 @@ void halfSampleRobustImageKernel(float* out, const float* in, uint2 inSize,
 
 void integrateKernel(Volume vol, const float* depth, uint2 depthSize,
 		const Matrix4 invTrack, const Matrix4 K, const float mu,
-		const float maxweight, uint2 computationSize) {
+		const float maxweight, uint2 computationSize, double* timingsIO) {
 
 	//uint3 pix = make_uint3(thr2pos2());
 	const float3 delta = rotate(invTrack, make_float3(0, 0, vol.dim.z / vol.size.z));
@@ -682,11 +699,16 @@ void integrateKernel(Volume vol, const float* depth, uint2 depthSize,
 	int arg = 0;
 	char errStr[20];
 
+	timingsIO[8] = 0.0;
+
+	startOfTiming = benchmark_tock();
 	clError = clEnqueueWriteBuffer(cmd_queues[0][0], ocl_FloatDepth, CL_TRUE, 0, sizeof(float) * computationSize.x * computationSize.y, floatDepth, 0, NULL, NULL);
 	checkErr(clError, "clEnqueueWriteBuffer");
 
 	clError = clEnqueueWriteBuffer(cmd_queues[0][0], ocl_volume_data, CL_TRUE, 0, vol.size.x * vol.size.y * vol.size.z * sizeof(short2), volume.data, 0, NULL, NULL);
 	checkErr(clError, "clEnqueueWriteBuffer");
+	endOfTiming = benchmark_tock();
+	timingsIO[8] += endOfTiming - startOfTiming;
 
 	clError = clSetKernelArg(integrate_ocl_kernel, arg++, sizeof(cl_mem), (void*) &ocl_volume_data);
 	sprintf(errStr, "clSetKernelArg%d", arg);
@@ -746,7 +768,10 @@ void integrateKernel(Volume vol, const float* depth, uint2 depthSize,
 	clError = clEnqueueNDRangeKernel(cmd_queues[0][0], integrate_ocl_kernel, 2, NULL, globalWorksize, NULL, 0, NULL, NULL);
 	checkErr(clError, "clEnqueueNDRangeKernel");
 
+	startOfTiming = benchmark_tock();
 	clError = clEnqueueReadBuffer(cmd_queues[0][0], ocl_volume_data, CL_TRUE, 0, vol.size.x * vol.size.y * vol.size.z * sizeof(short2), volume.data, 0, NULL, NULL);
+	endOfTiming = benchmark_tock();
+	timingsIO[8] += endOfTiming - startOfTiming;
 	checkErr(clError, "clEnqueueReadBuffer");
 }
 float4 raycast(const Volume volume, const uint2 pos, const Matrix4 view,
@@ -1070,7 +1095,7 @@ bool Kfusion::integration(float4 k, uint integration_rate, float mu,
 
 	if ((doIntegrate && ((frame % integration_rate) == 0)) || (frame <= 3)) {
 		integrateKernel(volume, floatDepth, computationSize, inverse(pose),
-				getCameraMatrix(k), mu, maxweight, computationSize);
+				getCameraMatrix(k), mu, maxweight, computationSize, timingsIO);
 		doIntegrate = true;
 	} else {
 		doIntegrate = false;
