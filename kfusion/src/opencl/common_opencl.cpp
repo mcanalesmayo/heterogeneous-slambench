@@ -17,7 +17,7 @@
 #define STR(x) XSTR(x)
 
 #ifndef AOCX_PATH
-#define AOCX_PATH "/home/root/heterogeneous-slambench/kfusion/src/opencl/kernels_fpga_mm2meters"
+#define AOCX_PATH "/home/root/xuser_slambench/kfusion/src/opencl/kernels_fpga_mm2meters"
 #endif
 
 cl_int             clError;
