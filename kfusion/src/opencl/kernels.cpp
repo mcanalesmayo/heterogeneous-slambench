@@ -43,6 +43,23 @@
 
 #endif
 
+inline double benchmark_tock() {
+       synchroniseDevices();
+#ifdef __APPLE__
+       clock_serv_t cclock;
+       mach_timespec_t clockData;
+       host_get_clock_service(mach_host_self(), SYSTEM_CLOCK, &cclock);
+       clock_get_time(cclock, &clockData);
+       mach_port_deallocate(mach_task_self(), cclock);
+#else
+       struct timespec clockData;
+       clock_gettime(CLOCK_MONOTONIC, &clockData);
+#endif
+       return (double) clockData.tv_sec + clockData.tv_nsec / 1000000000.0;
+}
+
+double startOfTiming, endOfTiming;
+
 cl_kernel bilateralFilter_ocl_kernel;
 
 cl_mem ocl_FloatDepth = NULL;
@@ -67,7 +84,7 @@ Matrix4 raycastPose;
 float3 ** inputVertex;
 float3 ** inputNormal;
 
-bool print_kernel_timing = false;
+bool print_kernel_timing = true;
 #ifdef __APPLE__
 	clock_serv_t cclock;
 	mach_timespec_t tick_clockData;
@@ -215,14 +232,16 @@ void initVolumeKernel(Volume volume) {
 }
 
 void bilateralFilterKernel(float* out, const float* in, uint2 size,
-		const float * gaussian, float e_d, int r) {
-		//TICK()
+		const float * gaussian, float e_d, int r, double* timingsIO) {
 	int arg = 0;
 	char errStr[20];
 
 	size_t globalWorksize[2] = { size.x, size.y };
 
+	startOfTiming = benchmark_tock();
 	clError = clEnqueueWriteBuffer(cmd_queues[0][0], ocl_FloatDepth, CL_TRUE, 0, size.x * size.y * sizeof(float), floatDepth, 0, NULL, NULL);
+	endOfTiming = benchmark_tock();
+	timingsIO[2] = endOfTiming - startOfTiming;
 	checkErr(clError, "clEnqueueWriteBuffer");
 
 	clError = clSetKernelArg(bilateralFilter_ocl_kernel, arg++, sizeof(cl_mem), &ocl_ScaledDepth);
@@ -244,9 +263,11 @@ void bilateralFilterKernel(float* out, const float* in, uint2 size,
 	clError = clEnqueueNDRangeKernel(cmd_queues[0][0], bilateralFilter_ocl_kernel, 2, NULL, globalWorksize, NULL, 0, NULL, NULL);
 	checkErr(clError, "clEnqueueNDRangeKernel");
 
+	startOfTiming = benchmark_tock();
 	clError = clEnqueueReadBuffer(cmd_queues[0][0], ocl_ScaledDepth, CL_TRUE, 0, size.x * size.y * sizeof(float), &ScaledDepth[0][0], 0, NULL, NULL);
+	endOfTiming = benchmark_tock();
+	timingsIO[2] += endOfTiming - startOfTiming;
 	checkErr(clError, "clEnqueueWriteBuffer");
-	//TOCK("bilateralFilterKernel", size.x * size.y);
 }
 
 void depth2vertexKernel(float3* vertex, const float * depth, uint2 imageSize,
@@ -960,7 +981,7 @@ void renderVolumeKernel(uchar4* out, const uint2 depthSize, const Volume volume,
 bool Kfusion::preprocessing(const ushort * inputDepth, const uint2 inputSize) {
 
 	mm2metersKernel(floatDepth, computationSize, inputDepth, inputSize);
-	bilateralFilterKernel(ScaledDepth[0], floatDepth, computationSize, gaussian, e_delta, radius);
+	bilateralFilterKernel(ScaledDepth[0], floatDepth, computationSize, gaussian, e_delta, radius, timingsIO);
 
 	return true;
 }
