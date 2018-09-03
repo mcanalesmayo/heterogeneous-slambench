@@ -43,6 +43,23 @@
 
 #endif
 
+inline double benchmark_tock() {
+	synchroniseDevices();
+#ifdef __APPLE__
+	clock_serv_t cclock;
+	mach_timespec_t clockData;
+	host_get_clock_service(mach_host_self(), SYSTEM_CLOCK, &cclock);
+	clock_get_time(cclock, &clockData);
+	mach_port_deallocate(mach_task_self(), cclock);
+#else
+	struct timespec clockData;
+	clock_gettime(CLOCK_MONOTONIC, &clockData);
+#endif
+	return (double) clockData.tv_sec + clockData.tv_nsec / 1000000000.0;
+}
+
+double startOfTiming, endOfTiming;
+
 cl_kernel renderDepth_ocl_kernel;
 
 cl_mem ocl_FloatDepth = NULL;
@@ -1089,7 +1106,12 @@ void Kfusion::renderDepth(uchar4 * out, uint2 outputSize) {
         checkErr(clError, "clCreateBuffer output" );
     }
 
+    timingsIO[10] = 0.0;
+
+    startOfTiming = benchmark_tock();
     clEnqueueWriteBuffer(cmd_queues[0][0], ocl_FloatDepth, CL_TRUE, 0, computationSize.x * computationSize.y * sizeof(float), floatDepth, 0, NULL, NULL );
+    endOfTiming = benchmark_tock();
+    timingsIO[10] += endOfTiming - startOfTiming;
 
     clError = clSetKernelArg(renderDepth_ocl_kernel, 0, sizeof(cl_mem), &ocl_output_render_buffer);
     clError &= clSetKernelArg(renderDepth_ocl_kernel, 1, sizeof(cl_mem), &ocl_FloatDepth);
@@ -1103,8 +1125,10 @@ void Kfusion::renderDepth(uchar4 * out, uint2 outputSize) {
             NULL, globalWorksize, NULL, 0, NULL, NULL);
     checkErr(clError, "clEnqueueNDRangeKernel");
 
-
+    startOfTiming = benchmark_tock();
     clError = clEnqueueReadBuffer(cmd_queues[0][0], ocl_output_render_buffer, CL_FALSE, 0, outputSize.x * outputSize.y * sizeof(uchar4), out, 0, NULL, NULL );  
+    endOfTiming = benchmark_tock();
+    timingsIO[10] += endOfTiming - startOfTiming;
     checkErr( clError, "clEnqueueReadBuffer");
 }
 
