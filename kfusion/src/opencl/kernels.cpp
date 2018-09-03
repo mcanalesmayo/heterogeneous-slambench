@@ -43,6 +43,23 @@
 
 #endif
 
+inline double benchmark_tock() {
+	synchroniseDevices();
+#ifdef __APPLE__
+	clock_serv_t cclock;
+	mach_timespec_t clockData;
+	host_get_clock_service(mach_host_self(), SYSTEM_CLOCK, &cclock);
+	clock_get_time(cclock, &clockData);
+	mach_port_deallocate(mach_task_self(), cclock);
+#else
+	struct timespec clockData;
+	clock_gettime(CLOCK_MONOTONIC, &clockData);
+#endif
+	return (double) clockData.tv_sec + clockData.tv_nsec / 1000000000.0;
+}	
+
+double startOfTiming, endOfTiming;
+
 cl_kernel depth2vertex_ocl_kernel;
 
 cl_mem * ocl_ScaledDepth = NULL;
@@ -992,7 +1009,10 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 	if (frame % tracking_rate != 0)
 		return false;
 
+	startOfTiming = benchmark_tock();
     clError = clEnqueueWriteBuffer(cmd_queues[0][0], ocl_ScaledDepth[0], CL_TRUE, 0, computationSize.x * computationSize.y * sizeof(float), &ScaledDepth[0][0], 0, NULL, NULL);
+    endOfTiming = benchmark_tock();
+    timingsIO[4] = endOfTiming - startOfTiming;
     checkErr(clError, "clEnqueueWriteBuffer");
 
 	// half sample the input depth maps into the pyramid levels
@@ -1001,7 +1021,10 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 				make_uint2(computationSize.x / (int) pow(2, i - 1),
 						computationSize.y / (int) pow(2, i - 1)), e_delta * 3, 1);
 
+		startOfTiming = benchmark_tock();
         clError = clEnqueueWriteBuffer(cmd_queues[0][0], ocl_ScaledDepth[i], CL_TRUE, 0, sizeof(float) * (computationSize.x * computationSize.y) / (int) pow(2, i), &ScaledDepth[i][0], 0, NULL, NULL);
+        endOfTiming = benchmark_tock();
+    	timingsIO[4] = endOfTiming - startOfTiming;
         checkErr(clError, "clEnqueueWriteBuffer");
 	}
 
@@ -1011,8 +1034,11 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 		Matrix4 invK = getInverseCameraMatrix(k / float(1 << i));
 		depth2vertexKernel(localimagesize, invK, i);
 
+		startOfTiming = benchmark_tock();
         clError = clEnqueueReadBuffer(cmd_queues[0][0], ocl_inputVertex[i], CL_TRUE, 0, sizeof(float3) * (computationSize.x * computationSize.y) / (int) pow(2, i), &inputVertex[i][0], 0, NULL, NULL);
-        checkErr(clError, "clEnqueueWriteBuffer");
+        endOfTiming = benchmark_tock();
+    	timingsIO[4] = endOfTiming - startOfTiming;
+        checkErr(clError, "clEnqueueReadBuffer");
 
 		vertex2normalKernel(inputNormal[i], inputVertex[i], localimagesize);
 		localimagesize = make_uint2(localimagesize.x / 2, localimagesize.y / 2);
