@@ -5,11 +5,16 @@
 2 = -s 4.8 -p 0.34,0.5,0.24 -z 4 -c 2 -r 2 -k 481.2,480,320,240
 3 = -s 5.0 -p 0.2685,0.5,0.4 -z 4 -c 2 -r 2 -k 481.2,480,320,240
 
-TIMESTAMP=$(shell date "+%Y_%m_%d_%H_%M_%S")
+TIMESTAMP=$(shell date "+%Y_%m_%d_%H_%M_%S_%N")
 COMMIT_HASH=$(shell git rev-parse --verify HEAD)
 ROOT_DIR=$(shell pwd)
 TOON_DIR=${ROOT_DIR}/TooN/install_dir
 TOON_INCLUDE_DIR=${TOON_DIR}/include/
+ifdef emulate
+EMULATE=$(emulate)
+else
+EMULATE=false
+endif
 
 all : build
 
@@ -33,9 +38,9 @@ TooN:
 	cd build/ && cmake .. -DTOON_INCLUDE_PATH=${TOON_INCLUDE_DIR} $(CMAKE_ARGUMENTS)
 	$(MAKE) -C build  $(MFLAGS) scene2raw
 
-living_room_traj%_loop.raw : living_room_traj%_loop ./build/kfusion/thirdparty/scene2raw 
+living_room_traj%_loop.raw : ./build/kfusion/thirdparty/scene2raw 
 	if test -x ./build/kfusion/thirdparty/scene2raw ; then echo "..." ; else echo "do make before"; false ; fi
-	if test -x living_room_traj$(*F)_loop.raw; then echo "raw input file already present, no need for conversion. " ; else ./build/kfusion/thirdparty/scene2raw living_room_traj$(*F)_loop living_room_traj$(*F)_loop.raw; fi
+	if test -r living_room_traj$(*F)_loop.raw; then echo "raw input file already present, no need for conversion. " ; else ./build/kfusion/thirdparty/scene2raw living_room_traj$(*F)_loop living_room_traj$(*F)_loop.raw; fi
 
 living_room_traj%_loop : 
 	mkdir $@
@@ -50,29 +55,33 @@ livingRoom%.gt.freiburg :
 
 %.opencl.log  : living_room_traj%_loop.raw livingRoom%.gt.freiburg
 	$(MAKE) -C build  $(MFLAGS) kfusion-benchmark-opencl oclwrapper
-	LD_PRELOAD=./build/kfusion/thirdparty/liboclwrapper.so ./build/kfusion/kfusion-benchmark-opencl $($(*F)) -i  living_room_traj$(*F)_loop.raw -o benchmark.$@ 2> oclwrapper.$@
+	if ${EMULATE} == true; then CL_CONTEXT_EMULATOR_DEVICE_ALTERA=1 KERNEL_TIMINGS=1 LD_PRELOAD=./build/kfusion/thirdparty/liboclwrapper.so ./build/kfusion/kfusion-benchmark-opencl $($(*F)) -i  living_room_traj$(*F)_loop.raw -o benchmark_io.$@ -a benchmark_cpu.$@ -e benchmark_custom.$@ -g benchmark_buffers.$@ -d volume.$@ 2> oclwrapper.$@; else KERNEL_TIMINGS=1 LD_PRELOAD=./build/kfusion/thirdparty/liboclwrapper.so ./build/kfusion/kfusion-benchmark-opencl $($(*F)) -i  living_room_traj$(*F)_loop.raw -o benchmark_io.$@ -a benchmark_cpu.$@ -e benchmark_custom.$@ -g benchmark_buffers.$@ -d volume.$@ 2> oclwrapper.$@; fi
 	cat  oclwrapper.$@ |grep -E ".+ [0-9]+ [0-9]+ [0-9]+" |cut -d" " -f1,4 >   kernels.$@
-	./kfusion/thirdparty/checkPos.py benchmark.$@  livingRoom$(*F).gt.freiburg ${TIMESTAMP} ${COMMIT_HASH} ${ROOT_DIR}/$@.pos.csv > resume.$@
+	./kfusion/thirdparty/checkPos.py benchmark_io.$@ benchmark_cpu.$@  livingRoom$(*F).gt.freiburg ${TIMESTAMP} ${COMMIT_HASH} ${ROOT_DIR}/$@.pos_io.csv ${ROOT_DIR}/$@.pos_cpu.csv > resume.$@
 	./kfusion/thirdparty/checkKernels.py kernels.$@ ${TIMESTAMP} ${COMMIT_HASH} ${ROOT_DIR}/$@.kernels.csv >> resume.$@
+	./kfusion/thirdparty/buffersStats.py benchmark_buffers.$@ resume_buffers.$@
 
 %.cpp.log  :  living_room_traj%_loop.raw livingRoom%.gt.freiburg
 	$(MAKE) -C build  $(MFLAGS) kfusion-benchmark-cpp
-	KERNEL_TIMINGS=1 ./build/kfusion/kfusion-benchmark-cpp $($(*F)) -i  living_room_traj$(*F)_loop.raw -o  benchmark.$@ 2> kernels.$@
-	./kfusion/thirdparty/checkPos.py benchmark.$@  livingRoom$(*F).gt.freiburg ${TIMESTAMP} ${COMMIT_HASH} ${ROOT_DIR}/$@.pos.csv > resume.$@
+	KERNEL_TIMINGS=1 ./build/kfusion/kfusion-benchmark-cpp $($(*F)) -i  living_room_traj$(*F)_loop.raw -o  benchmark_io.$@ -a benchmark_cpu.$@ -e benchmark_custom.$@ -d volume.$@ 2> kernels.$@
+	./kfusion/thirdparty/checkPos.py benchmark_io.$@ benchmark_cpu.$@  livingRoom$(*F).gt.freiburg ${TIMESTAMP} ${COMMIT_HASH} ${ROOT_DIR}/$@.pos.csv ${ROOT_DIR}/$@.pos_cpu.csv > resume.$@
 	./kfusion/thirdparty/checkKernels.py kernels.$@ ${TIMESTAMP} ${COMMIT_HASH} ${ROOT_DIR}/$@.kernels.csv >> resume.$@
+	./kfusion/thirdparty/buffersStats.py benchmark_buffers.$@ resume_buffers.$@
 
 %.openmp.log  :  living_room_traj%_loop.raw livingRoom%.gt.freiburg
 	$(MAKE) -C build $(MFLAGS) kfusion-benchmark-openmp
-	KERNEL_TIMINGS=1 OMP=1 ./build/kfusion/kfusion-benchmark-openmp $($(*F)) -i  living_room_traj$(*F)_loop.raw -o  benchmark.$@ 2> kernels.$@
-	./kfusion/thirdparty/checkPos.py benchmark.$@  livingRoom$(*F).gt.freiburg ${TIMESTAMP} ${COMMIT_HASH} ${ROOT_DIR}/$@.pos.csv > resume.$@
+	KERNEL_TIMINGS=1 OMP=1 ./build/kfusion/kfusion-benchmark-openmp $($(*F)) -i  living_room_traj$(*F)_loop.raw -o  benchmark_io.$@ -a benchmark_cpu.$@ -e benchmark_custom.$@ -d volume.$@ 2> kernels.$@
+	./kfusion/thirdparty/checkPos.py benchmark_io.$@ benchmark_cpu.$@  livingRoom$(*F).gt.freiburg ${TIMESTAMP} ${COMMIT_HASH} ${ROOT_DIR}/$@.pos.csv ${ROOT_DIR}/$@.pos_cpu.csv > resume.$@
 	./kfusion/thirdparty/checkKernels.py kernels.$@ ${TIMESTAMP} ${COMMIT_HASH} ${ROOT_DIR}/$@.kernels.csv >> resume.$@
+	./kfusion/thirdparty/buffersStats.py benchmark_buffers.$@ resume_buffers.$@
 
 %.cuda.log  : living_room_traj%_loop.raw livingRoom%.gt.freiburg
 	$(MAKE) -C build  $(MFLAGS) kfusion-benchmark-cuda
-	nvprof --print-gpu-trace ./build/kfusion/kfusion-benchmark-cuda $($(*F)) -i  living_room_traj$(*F)_loop.raw -o  benchmark.$@ 2> nvprof.$@ || true
+	nvprof --print-gpu-trace ./build/kfusion/kfusion-benchmark-cuda $($(*F)) -i  living_room_traj$(*F)_loop.raw -o  benchmark_io.$@ -a benchmark_cpu.$@ -e benchmark_custom.$@ -d volume.$@ 2> nvprof.$@ || true
 	cat  nvprof.$@ | kfusion/thirdparty/nvprof2log.py >   kernels.$@
-	./kfusion/thirdparty/checkPos.py benchmark.$@  livingRoom$(*F).gt.freiburg ${TIMESTAMP} ${COMMIT_HASH} ${ROOT_DIR}/$@.pos.csv > resume.$@
+	./kfusion/thirdparty/checkPos.py benchmark_io.$@ benchmark_cpu.$@  livingRoom$(*F).gt.freiburg ${TIMESTAMP} ${COMMIT_HASH} ${ROOT_DIR}/$@.pos.csv ${ROOT_DIR}/$@.pos_cpu.csv > resume.$@
 	./kfusion/thirdparty/checkKernels.py kernels.$@ ${TIMESTAMP} ${COMMIT_HASH} ${ROOT_DIR}/$@.kernels.csv >> resume.$@
+	./kfusion/thirdparty/buffersStats.py benchmark_buffers.$@ resume_buffers.$@
 
 
 #### GENERAL GENERATION ####

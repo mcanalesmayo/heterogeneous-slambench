@@ -41,6 +41,9 @@ const bool default_render_volume_fullsize = false;
 const std::string default_dump_volume_file = "";
 const std::string default_input_file = "";
 const std::string default_log_file = "";
+const std::string default_log_file_cpu = "";
+const std::string default_log_file_custom = "";
+const std::string default_log_file_buffers = "";
 
 inline std::string pyramid2str(std::vector<int> v) {
 	std::ostringstream ss;
@@ -50,7 +53,7 @@ inline std::string pyramid2str(std::vector<int> v) {
 
 }
 
-static std::string short_options = "qc:d:f:i:l:m:k:o:p:r:s:t:v:y:z:";
+static std::string short_options = "qc:d:f:i:l:m:k:o:p:r:s:t:v:y:z:a:e:g:";
 
 static struct option long_options[] =
   {
@@ -61,6 +64,9 @@ static struct option long_options[] =
 		    {"camera",  			   required_argument, 0, 'k'},
 		    {"icp-threshold", 	 	   required_argument, 0, 'l'},
 		    {"log-file",  			   required_argument, 0, 'o'},
+		    {"log-file-cpu",  		   required_argument, 0, 'a'},
+		    {"log-file-custom",  	   required_argument, 0, 'e'},
+		    {"log-file-buffers",  	   required_argument, 0, 'g'},
 		    {"mu", 			 		   required_argument, 0, 'm'},
 		    {"init-pose",  			   required_argument, 0, 'p'},
 		    {"no-gui",  			   no_argument,       0, 'q'},
@@ -89,6 +95,9 @@ struct Configuration {
 	std::string dump_volume_file;
 	std::string input_file;
 	std::string log_file;
+	std::string log_file_cpu;
+	std::string log_file_custom;
+	std::string log_file_buffers;
 	std::ofstream log_filestream;
 	std::ostream *log_stream;
 
@@ -108,8 +117,11 @@ struct Configuration {
 		std ::cerr << "-f  (--fps)                      : default is " << default_fps       << std::endl;
 		std ::cerr << "-i  (--input-file) <filename>    : Input camera file               " << std::endl;
 		std ::cerr << "-k  (--camera)                   : default is defined by input     " << std::endl;
-		std ::cerr << "-l  (--icp-threshold)                : default is " << default_icp_threshold << std::endl;
+		std ::cerr << "-l  (--icp-threshold)            : default is " << default_icp_threshold << std::endl;
 		std ::cerr << "-o  (--log-file) <filename>      : default is stdout               " << std::endl;
+		std ::cerr << "-a  (--log-file-cpu) <filename>  : default is stdout               " << std::endl;
+		std ::cerr << "-e  (--log-file-custom) <filename>  : default is stdout               " << std::endl;
+		std ::cerr << "-g  (--log-file-buffers) <filename>  : default is stdout               " << std::endl;
 		std ::cerr << "-m  (--mu)                       : default is " << default_mu << "               " << std::endl;
 		std ::cerr << "-p  (--init-pose)                : default is " << default_initial_pos_factor.x << "," << default_initial_pos_factor.y << "," << default_initial_pos_factor.z << "     " << std::endl;
 		std ::cerr << "-q  (--no-gui)                   : default is to display gui"<<std::endl;
@@ -242,6 +254,9 @@ time_t rawtime;
 		dump_volume_file = default_dump_volume_file;
 		input_file = default_input_file;
 		log_file = default_log_file;
+		log_file_cpu = default_log_file_cpu;
+		log_file_custom = default_log_file_custom;
+		log_file_buffers = default_log_file_buffers;
 
 		mu = default_mu;
 		fps = default_fps;
@@ -317,6 +332,21 @@ time_t rawtime;
 			case 'o':    //   -o  (--log-file)
 				this->log_file = optarg;
 				std::cerr << "update log_file to " << this->log_file
+						<< std::endl;
+				break;
+			case 'a':    //   -a  (--log-file-cpu)
+				this->log_file_cpu = optarg;
+				std::cerr << "update log_file_cpu to " << this->log_file_cpu
+						<< std::endl;
+				break;
+			case 'e':    //   -a  (--log-file-custom)
+				this->log_file_custom = optarg;
+				std::cerr << "update log_file_custom to " << this->log_file_custom
+						<< std::endl;
+				break;
+			case 'g':    //   -a  (--log-file-buffers)
+				this->log_file_buffers = optarg;
+				std::cerr << "update log_file_buffers to " << this->log_file_buffers
 						<< std::endl;
 				break;
 			case 'l':  //   -l (--icp-threshold)
