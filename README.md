@@ -1,3 +1,36 @@
+# heterogeneous-slambench #
+
+This is a work mainly focused on optimizing KFusion algorithm for FPGAs using OpenCL. The objective is to see its performance and check if it can be used in an heterogeneous system having also a CPU and a GPU. This research has been conducted with the following workstation:
+* Intel i7-6700K
+* NVIDIA Titan X - 12 GB - PCIe 3.0 x16
+* Terasic DE5-Net Stratix V Altera FPGA - 4 GB - PCIe 3.0 x8
+* Platform global memory: 64 GB RAM
+Additionally, in order to compare the performance of different environments, some experiments have been run in a DE1SoC platform:
+* ARM A9 Dual Core
+* On-chip Terasic Cyclone V Altera FPGA - 64 MB
+* Platform global memory: 1 GB RAM
+
+This work is based on the [SLAMBench benchmark](https://github.com/pamela-project/slambench). The framework has been enhanced so that finer-grain metrics (times, bandwidth, etc) can be obtained. Moreover, additional Python scripts have been developed to ease the use of the benchmark and provide more analytics to better understand the code performance.
+
+The following command will run the OpenCL version 20 times with ICL-NUIM dataset 2:
+```
+python makeRun.py 20 2 opencl
+```
+The output results are the average of all runs.
+
+Versions have been developed under specific branches:
+* ```original*``` branches contains the original implementation.
+* ```opt*``` branches contains explored optimizations targetting the FPGA.
+* ```*FPGAde1soc*``` and ```*FPGAde5net*``` refer to the target FPGA, whereas ```*GPU*``` refers to the GPU.
+* kernel names in the branch name means that kernel is run in the target device whereas the other kernels are run in the host.
+* Explored optimizations are also appended to the branch name.
+E.g.: ```optFPGAde5net_reduce_fixedPoint_seqXwi_memAccessPattern``` has the version to run in the DE5-Net FPGA the reduce kernel optimized with:
+* Using fixed point representation and arithmetics instead of floating point.
+* Variable number of work items.
+* Enhanced memory access pattern.
+
+**NOTE**: These branches only have **kfusion/src/opencl/*** files up to date. For every other single file master branch is up to date.
+
 # README #
 
 SLAMBench Release Candidate 1.2 [![Build Status](https://travis-ci.org/pamela-project/slambench.svg?branch=master)](https://travis-ci.org/pamela-project/slambench)
