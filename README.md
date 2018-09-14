@@ -25,6 +25,7 @@ Versions have been developed under specific branches:
 * ```*FPGAde1soc*``` and ```*FPGAde5net*``` refer to the target FPGA, whereas ```*GPU*``` refers to the GPU.
 * kernel names in the branch name means that kernel is run in the target device whereas the other kernels are run in the host.
 * Explored optimizations are also appended to the branch name.
+
 E.g.: ```optFPGAde5net_reduce_fixedPoint_seqXwi_memAccessPattern``` has the version to run in the DE5-Net FPGA the reduce kernel optimized with:
 * Using fixed point representation and arithmetics instead of floating point.
 * Variable number of work items.
