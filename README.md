@@ -5,6 +5,7 @@ This is a work mainly focused on optimizing KFusion algorithm for FPGAs using Op
 * NVIDIA Titan X - 12 GB - PCIe 3.0 x16
 * Terasic DE5-Net Stratix V Altera FPGA - 4 GB - PCIe 3.0 x8
 * Platform global memory: 64 GB RAM
+
 Additionally, in order to compare the performance of different environments, some experiments have been run in a DE1SoC platform:
 * ARM A9 Dual Core
 * On-chip Terasic Cyclone V Altera FPGA - 64 MB
